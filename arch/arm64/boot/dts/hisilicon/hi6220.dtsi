@@ -80,6 +80,12 @@
 			};
 		};
 
+		foo: foo-power-domain@09000000 {
+			compatible = "foo,genpd";
+			#power-domain-cells = <0>;
+			operating-points-v2 = <&domain_opp_table>;
+		};
+
 		cpu0: cpu@0 {
 			compatible = "arm,cortex-a53", "arm,armv8";
 			device_type = "cpu";
@@ -91,6 +97,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu1: cpu@1 {
@@ -104,6 +111,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu2: cpu@2 {
@@ -117,6 +125,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu3: cpu@3 {
@@ -130,6 +139,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu4: cpu@100 {
@@ -143,6 +153,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu5: cpu@101 {
@@ -156,6 +167,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu6: cpu@102 {
@@ -169,6 +181,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		cpu7: cpu@103 {
@@ -182,6 +195,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
+			power-domains = <&foo>;
 		};
 
 		CLUSTER0_L2: l2-cache0 {
@@ -193,34 +207,48 @@
 		};
 	};
 
+	domain_opp_table: domain_opp_table {
+		compatible = "operating-points-v2";
+
+		domain_opp_1: opp00 {
+			qcom,level = <1>;
+		};
+		domain_opp_2: opp01 {
+			qcom,level = <2>;
+		};
+		domain_opp_3: opp02 {
+			qcom,level = <3>;
+		};
+	};
+
 	cpu_opp_table: cpu_opp_table {
 		compatible = "operating-points-v2";
 		opp-shared;
 
 		opp00 {
 			opp-hz = /bits/ 64 <208000000>;
-			opp-microvolt = <1040000>;
 			clock-latency-ns = <500000>;
+			required-opps = <&domain_opp_1>;
 		};
 		opp01 {
 			opp-hz = /bits/ 64 <432000000>;
-			opp-microvolt = <1040000>;
 			clock-latency-ns = <500000>;
+			required-opps = <&domain_opp_2>;
 		};
 		opp02 {
 			opp-hz = /bits/ 64 <729000000>;
-			opp-microvolt = <1090000>;
 			clock-latency-ns = <500000>;
+			required-opps = <&domain_opp_2>;
 		};
 		opp03 {
 			opp-hz = /bits/ 64 <960000000>;
-			opp-microvolt = <1180000>;
 			clock-latency-ns = <500000>;
+			required-opps = <&domain_opp_3>;
 		};
 		opp04 {
 			opp-hz = /bits/ 64 <1200000000>;
-			opp-microvolt = <1330000>;
 			clock-latency-ns = <500000>;
+			required-opps = <&domain_opp_3>;
 		};
 	};
 
