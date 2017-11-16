@@ -174,6 +174,7 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 	struct device_node *required_np, *np;
 	int count, i;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* Traversing the first OPP node is all we need */
 	np = of_get_next_available_child(opp_np, NULL);
 	if (!np) {
@@ -181,6 +182,7 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 		return;
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	count = of_count_phandle_with_args(np, "required-opps", NULL);
 	if (!count)
 		goto put_np;
@@ -192,6 +194,7 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 			goto put_np;
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	required_opp_tables = kcalloc(count, sizeof(*required_opp_tables),
 				      GFP_KERNEL);
 	if (!required_opp_tables) {
@@ -203,7 +206,9 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 	opp_table->required_opp_tables = required_opp_tables;
 	opp_table->required_opp_count = count;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	for (i = 0; i < count; i++) {
+	pr_info("%s: %d\n", __func__, __LINE__);
 		required_np = of_parse_required_opp(np, i);
 		if (!required_np)
 			goto free_required_tables;
@@ -211,6 +216,7 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 		required_opp_tables[i] = _find_table_of_opp_np(required_np);
 		of_node_put(required_np);
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 		if (IS_ERR(required_opp_tables[i]))
 			goto free_required_tables;
 
@@ -226,11 +232,14 @@ static void _opp_table_alloc_required_tables(struct opp_table *opp_table,
 		}
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	goto put_np;
 
 free_required_tables:
+	pr_info("%s: %d\n", __func__, __LINE__);
 	_opp_table_free_required_tables(opp_table);
 put_np:
+	pr_info("%s: %d\n", __func__, __LINE__);
 	of_node_put(np);
 }
 
@@ -256,6 +265,7 @@ void _of_init_opp_table(struct opp_table *opp_table, struct device *dev,
 	if (of_find_property(np, "#power-domain-cells", NULL))
 		opp_table->is_genpd = true;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* Get OPP table node */
 	opp_np = _opp_of_get_opp_desc_node(np, index);
 	of_node_put(np);
@@ -313,6 +323,7 @@ static int _of_opp_alloc_required_opps(struct opp_table *opp_table,
 	struct device_node *np;
 	int i, ret, count = opp_table->required_opp_count;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	if (!count)
 		return 0;
 
@@ -320,6 +331,7 @@ static int _of_opp_alloc_required_opps(struct opp_table *opp_table,
 	if (!required_opps)
 		return -ENOMEM;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	opp->required_opps = required_opps;
 
 	for (i = 0; i < count; i++) {
@@ -342,9 +354,11 @@ static int _of_opp_alloc_required_opps(struct opp_table *opp_table,
 		}
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	return 0;
 
 free_required_opps:
+	pr_info("%s: %d\n", __func__, __LINE__);
 	_of_opp_free_required_opps(opp_table, opp);
 
 	return ret;
@@ -560,6 +574,7 @@ static struct dev_pm_opp *_opp_add_static_v2(struct opp_table *opp_table,
 	int ret;
 	bool rate_not_available = false;
 
+	dev_info(dev, "%s: %d\n", __func__, __LINE__);
 	new_opp = _opp_allocate(opp_table);
 	if (!new_opp)
 		return ERR_PTR(-ENOMEM);
@@ -582,6 +597,7 @@ static struct dev_pm_opp *_opp_add_static_v2(struct opp_table *opp_table,
 		new_opp->rate = (unsigned long)rate;
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* Check if the OPP supports hardware's hierarchy of versions or not */
 	if (!_opp_is_supported(dev, opp_table, np)) {
 		dev_dbg(dev, "OPP not supported by hardware: %llu\n", rate);
@@ -594,10 +610,12 @@ static struct dev_pm_opp *_opp_add_static_v2(struct opp_table *opp_table,
 	new_opp->dynamic = false;
 	new_opp->available = true;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	ret = _of_opp_alloc_required_opps(opp_table, new_opp);
 	if (ret)
 		goto free_opp;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	if (!of_property_read_u32(np, "clock-latency-ns", &val))
 		new_opp->clock_latency_ns = val;
 
@@ -605,9 +623,11 @@ static struct dev_pm_opp *_opp_add_static_v2(struct opp_table *opp_table,
 	if (ret)
 		goto free_required_opps;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	if (opp_table->is_genpd)
 		new_opp->pstate = pm_genpd_opp_to_performance_state(dev, new_opp);
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	ret = _opp_add(dev, new_opp, opp_table, rate_not_available);
 	if (ret) {
 		/* Don't return error for duplicate OPPs */
@@ -616,6 +636,7 @@ static struct dev_pm_opp *_opp_add_static_v2(struct opp_table *opp_table,
 		goto free_required_opps;
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* OPP to select on device suspend */
 	if (of_property_read_bool(np, "opp-suspend")) {
 		if (opp_table->suspend_opp) {
@@ -658,6 +679,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 	int ret, count = 0, pstate_count = 0;
 	struct dev_pm_opp *opp;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* OPP table is already initialized for the device */
 	if (opp_table->parsed_static_opps) {
 		kref_get(&opp_table->list_kref);
@@ -666,6 +688,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 
 	kref_init(&opp_table->list_kref);
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* We have opp-table node now, iterate over it and add OPPs */
 	for_each_available_child_of_node(opp_table->np, np) {
 		opp = _opp_add_static_v2(opp_table, dev, np);
@@ -680,6 +703,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 		}
 	}
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* There should be one of more OPP defined */
 	if (WARN_ON(!count)) {
 		ret = -ENOENT;
@@ -689,6 +713,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 	list_for_each_entry(opp, &opp_table->opp_list, node)
 		pstate_count += !!opp->pstate;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* Either all or none of the nodes shall have performance state set */
 	if (pstate_count && pstate_count != count) {
 		dev_err(dev, "Not all nodes have performance state set (%d: %d)\n",
@@ -696,6 +721,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 		ret = -ENOENT;
 		goto put_list_kref;
 	}
+	pr_info("%s: %d\n", __func__, __LINE__);
 
 	if (pstate_count)
 		opp_table->genpd_performance_state = true;
@@ -706,6 +732,7 @@ static int _of_add_opp_table_v2(struct device *dev, struct opp_table *opp_table)
 
 put_list_kref:
 	_put_opp_list_kref(opp_table);
+	pr_info("%s: %d\n", __func__, __LINE__);
 
 	return ret;
 }

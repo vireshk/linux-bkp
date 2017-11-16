@@ -326,6 +326,7 @@ static int _genpd_set_performance_state(struct generic_pm_domain *genpd,
 			goto err;
 	}
 
+	pr_info("%s: %d: %p, d%u: %u\n", __func__, __LINE__, genpd, depth, state);
 	ret = genpd->set_performance_state(genpd, state);
 	if (ret)
 		goto err;
@@ -334,6 +335,7 @@ static int _genpd_set_performance_state(struct generic_pm_domain *genpd,
 	return 0;
 
 err:
+	pr_info("%s: %d: %p, d%u: %u\n", __func__, __LINE__, genpd, depth, state);
 	/* Encountered an error, lets rollback */
 	list_for_each_entry_continue_reverse(link, &genpd->slave_links,
 					     slave_node) {
@@ -386,6 +388,8 @@ int dev_pm_genpd_set_performance_state(struct device *dev, unsigned int state)
 	if (IS_ERR(genpd))
 		return -ENODEV;
 
+	pr_info("%s: %d: %p\n", __func__, __LINE__, genpd);
+
 	if (unlikely(!genpd->set_performance_state))
 		return -EINVAL;
 
@@ -405,6 +409,7 @@ int dev_pm_genpd_set_performance_state(struct device *dev, unsigned int state)
 	ret = _genpd_set_performance_state(genpd, state, 0);
 	if (ret)
 		gpd_data->performance_state = prev;
+	pr_info("%s: %d: %p\n", __func__, __LINE__, genpd);
 
 	genpd_unlock(genpd);
 

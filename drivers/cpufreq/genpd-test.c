@@ -15,11 +15,13 @@
 
 static int pd_power_on(struct generic_pm_domain *domain)
 {
+	pr_info("%s: %d\n", __func__, __LINE__);
 	return 0;
 }
 
 static int pd_power_off(struct generic_pm_domain *domain)
 {
+	pr_info("%s: %d\n", __func__, __LINE__);
 	return 0;
 }
 
@@ -37,6 +39,7 @@ static int pd_set_performance_multi(struct generic_pm_domain *domain, unsigned i
 
 static int pd_set_performance(struct generic_pm_domain *domain, unsigned int state)
 {
+	pr_info("%s: %d: %d\n", __func__, __LINE__, state);
 	return 0;
 }
 

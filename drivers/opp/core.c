@@ -635,11 +635,14 @@ static int _set_required_opps(struct device *dev,
 	unsigned int pstate;
 	int i, ret = 0;
 
+	dev_info(dev, "%s: %d: %lu\n", __func__, __LINE__, opp->rate);
+
 	if (!required_opp_tables)
 		return 0;
 
 	/* Single genpd case */
 	if (!genpd_virt_devs) {
+		dev_info(dev, "%s: %d\n", __func__, __LINE__);
 		pstate = opp->required_opps[0]->pstate;
 		ret = dev_pm_genpd_set_performance_state(dev, pstate);
 		if (ret) {
@@ -657,12 +660,14 @@ static int _set_required_opps(struct device *dev,
 	 */
 	mutex_lock(&opp_table->genpd_virt_dev_lock);
 
+	dev_info(dev, "%s: %d\n", __func__, __LINE__);
 	for (i = 0; i < opp_table->required_opp_count; i++) {
 		pstate = opp->required_opps[i]->pstate;
 
 		if (!genpd_virt_devs[i])
 			continue;
 
+		dev_info(dev, "%s: %d: %u: %s\n", __func__, __LINE__, pstate, dev_name(genpd_virt_devs[i]));
 		ret = dev_pm_genpd_set_performance_state(genpd_virt_devs[i], pstate);
 		if (ret) {
 			dev_err(dev, "Failed to set performance rate of %s: %d (%d)\n",
@@ -831,6 +836,7 @@ static struct opp_table *_allocate_opp_table(struct device *dev, int index)
 	struct opp_device *opp_dev;
 	int ret;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/*
 	 * Allocate a new OPP table. In the infrequent case where a new
 	 * device is needed to be added, we pay this penalty.

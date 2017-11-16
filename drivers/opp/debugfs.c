@@ -133,6 +133,7 @@ static int opp_list_debug_create_dir(struct opp_device *opp_dev,
 	const struct device *dev = opp_dev->dev;
 	struct dentry *d;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	opp_set_dev_name(dev, opp_table->dentry_name);
 
 	/* Create device specific directory */
@@ -182,6 +183,7 @@ static int opp_list_debug_create_link(struct opp_device *opp_dev,
  */
 int opp_debug_register(struct opp_device *opp_dev, struct opp_table *opp_table)
 {
+	pr_info("%s: %d\n", __func__, __LINE__);
 	if (!rootdir) {
 		pr_debug("%s: Uninitialized rootdir\n", __func__);
 		return -EINVAL;
@@ -190,6 +192,7 @@ int opp_debug_register(struct opp_device *opp_dev, struct opp_table *opp_table)
 	if (opp_table->dentry)
 		return opp_list_debug_create_link(opp_dev, opp_table);
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	return opp_list_debug_create_dir(opp_dev, opp_table);
 }
 
