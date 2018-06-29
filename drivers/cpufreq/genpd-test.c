@@ -27,6 +27,12 @@ static int pd_set_performance(struct generic_pm_domain *domain, unsigned int sta
 	return 0;
 }
 
+static int pd_set_performance1(struct generic_pm_domain *domain, unsigned int state)
+{
+	pr_info("%s: %d: %d\n", __func__, __LINE__, state);
+	return 0;
+}
+
 static unsigned int pd_get_performance(struct generic_pm_domain *genpd,
 			struct dev_pm_opp *opp)
 {
@@ -44,6 +50,11 @@ static unsigned int pd_get_performance(struct generic_pm_domain *genpd,
 static const struct of_device_id pm_domain_of_match[] __initconst = {
 	{
 		.compatible = "foo,genpd",
+		.data = pd_set_performance,
+	},
+	{
+		.compatible = "foo,genpd1",
+		.data = pd_set_performance1,
 	},
 	{ },
 };
@@ -52,8 +63,9 @@ static int __init add_domains(void)
 {
 	struct device_node *np;
 	struct generic_pm_domain *pd;
+	const struct of_device_id *of_id;
 
-	for_each_matching_node_and_match(np, pm_domain_of_match, NULL) {
+	for_each_matching_node_and_match(np, pm_domain_of_match, &of_id) {
 		pd = kzalloc(sizeof(*pd), GFP_KERNEL);
 		if (!pd)
 			return -ENOMEM;
@@ -67,7 +79,7 @@ static int __init add_domains(void)
 		pd->power_off = pd_power_off;
 		pd->power_on = pd_power_on;
 
-		pd->set_performance_state = pd_set_performance;
+		pd->set_performance_state = of_id->data;
 		pd->opp_to_performance_state = pd_get_performance;
 
 		pm_genpd_init(pd, NULL, false);
@@ -79,13 +91,17 @@ static int __init add_domains(void)
 
 static int __init genpd_test_init(void)
 {
-	struct device *dev = get_cpu_device(0);
+	struct device *dev = get_cpu_device(0), *vdev;
 
 	if (add_domains()) {
 		pr_info("%s: %d\n", __func__, __LINE__);
 		return -ENOMEM;
 	}
 
-	return dev_pm_domain_attach(dev, false);
+	vdev = dev_pm_domain_attach_by_id(dev, 0);
+	dev_pm_opp_set_genpd_virt_dev(dev, vdev, 0);
+	vdev = dev_pm_domain_attach_by_id(dev, 1);
+	dev_pm_opp_set_genpd_virt_dev(dev, vdev, 1);
+	return 0;
 }
 device_initcall(genpd_test_init);
