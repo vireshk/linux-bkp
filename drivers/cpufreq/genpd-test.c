@@ -10,6 +10,7 @@
 #include <linux/cpu.h>
 #include <linux/pm_domain.h>
 #include <linux/pm_opp.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 
 static int pd_power_on(struct generic_pm_domain *domain)
@@ -19,6 +20,12 @@ static int pd_power_on(struct generic_pm_domain *domain)
 
 static int pd_power_off(struct generic_pm_domain *domain)
 {
+	return 0;
+}
+
+static int pd_set_performance_parent(struct generic_pm_domain *domain, unsigned int state)
+{
+	pr_info("%s: %d: %d\n", __func__, __LINE__, state);
 	return 0;
 }
 
@@ -49,6 +56,10 @@ static unsigned int pd_get_performance(struct generic_pm_domain *genpd,
 
 static const struct of_device_id pm_domain_of_match[] __initconst = {
 	{
+		.compatible = "foo,genpd_parent",
+		.data = pd_set_performance_parent,
+	},
+	{
 		.compatible = "foo,genpd",
 		.data = pd_set_performance,
 	},
@@ -62,8 +73,9 @@ static const struct of_device_id pm_domain_of_match[] __initconst = {
 static int __init add_domains(void)
 {
 	struct device_node *np;
-	struct generic_pm_domain *pd;
+	struct generic_pm_domain *pd, *pd_ptr[3];
 	const struct of_device_id *of_id;
+	int i = 0;
 
 	for_each_matching_node_and_match(np, pm_domain_of_match, &of_id) {
 		pd = kzalloc(sizeof(*pd), GFP_KERNEL);
@@ -84,8 +96,12 @@ static int __init add_domains(void)
 
 		pm_genpd_init(pd, NULL, false);
 		of_genpd_add_provider_simple(np, pd);
+
+		pd_ptr[i++] = pd;
 	}
 
+	i = pm_genpd_add_subdomain(pd_ptr[0], pd_ptr[1]);
+	i = pm_genpd_add_subdomain(pd_ptr[0], pd_ptr[2]);
 	return 0;
 }
 
@@ -99,9 +115,14 @@ static int __init genpd_test_init(void)
 	}
 
 	vdev = dev_pm_domain_attach_by_id(dev, 0);
+	device_link_add(dev, vdev, DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
 	dev_pm_opp_set_genpd_virt_dev(dev, vdev, 0);
+	pm_runtime_get_sync(vdev);
+
 	vdev = dev_pm_domain_attach_by_id(dev, 1);
+	device_link_add(dev, vdev, DL_FLAG_PM_RUNTIME | DL_FLAG_STATELESS);
 	dev_pm_opp_set_genpd_virt_dev(dev, vdev, 1);
+	pm_runtime_get_sync(vdev);
 	return 0;
 }
 device_initcall(genpd_test_init);

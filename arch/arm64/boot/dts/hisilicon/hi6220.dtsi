@@ -22,6 +22,37 @@
 		method = "smc";
 	};
 
+	domain_opp_table_parent: domain_opp_table_p {
+		compatible = "operating-points-v2";
+
+		domain_opp_p1: opp00 {
+			qcom,level = <4>;
+		};
+		domain_opp_p2: opp01 {
+			qcom,level = <5>;
+		};
+		domain_opp_p3: opp02 {
+			qcom,level = <6>;
+		};
+	};
+
+	domain_opp_table: domain_opp_table {
+		compatible = "operating-points-v2";
+
+		domain_opp_1: opp00 {
+			qcom,level = <1>;
+			required-opps = <&domain_opp_p1>;
+		};
+		domain_opp_2: opp01 {
+			qcom,level = <2>;
+			required-opps = <&domain_opp_p2>;
+		};
+		domain_opp_3: opp02 {
+			qcom,level = <3>;
+			required-opps = <&domain_opp_p3>;
+		};
+	};
+
 	cpus {
 		#address-cells = <2>;
 		#size-cells = <0>;
@@ -80,16 +111,24 @@
 			};
 		};
 
+		foo_parent: foo-power-domain@07000000 {
+			compatible = "foo,genpd_parent";
+			#power-domain-cells = <0>;
+			operating-points-v2 = <&domain_opp_table_parent>;
+		};
+
 		foo: foo-power-domain@09000000 {
 			compatible = "foo,genpd";
 			#power-domain-cells = <0>;
 			operating-points-v2 = <&domain_opp_table>;
+			power-domains = <&foo_parent>;
 		};
 
 		foo1: foo-power-domain@08000000 {
 			compatible = "foo,genpd1";
 			#power-domain-cells = <0>;
 			operating-points-v2 = <&domain_opp_table>;
+			power-domains = <&foo_parent>;
 		};
 
 		cpu0: cpu@0 {
@@ -213,20 +252,6 @@
 		};
 	};
 
-	domain_opp_table: domain_opp_table {
-		compatible = "operating-points-v2";
-
-		domain_opp_1: opp00 {
-			qcom,level = <1>;
-		};
-		domain_opp_2: opp01 {
-			qcom,level = <2>;
-		};
-		domain_opp_3: opp02 {
-			qcom,level = <3>;
-		};
-	};
-
 	cpu_opp_table: cpu_opp_table {
 		compatible = "operating-points-v2";
 		opp-shared;
@@ -234,27 +259,27 @@
 		opp00 {
 			opp-hz = /bits/ 64 <208000000>;
 			clock-latency-ns = <500000>;
-			required-opps = <&domain_opp_1>, <&domain_opp_1>;
+			required-opps = <&domain_opp_1>, <&domain_opp_2>;
 		};
 		opp01 {
 			opp-hz = /bits/ 64 <432000000>;
 			clock-latency-ns = <500000>;
-			required-opps = <&domain_opp_2>, <&domain_opp_2>;
+			required-opps = <&domain_opp_2>, <&domain_opp_3>;
 		};
 		opp02 {
 			opp-hz = /bits/ 64 <729000000>;
 			clock-latency-ns = <500000>;
-			required-opps = <&domain_opp_2>, <&domain_opp_2>;
+			required-opps = <&domain_opp_2>, <&domain_opp_3>;
 		};
 		opp03 {
 			opp-hz = /bits/ 64 <960000000>;
 			clock-latency-ns = <500000>;
-			required-opps = <&domain_opp_3>, <&domain_opp_3>;
+			required-opps = <&domain_opp_3>, <&domain_opp_1>;
 		};
 		opp04 {
 			opp-hz = /bits/ 64 <1200000000>;
 			clock-latency-ns = <500000>;
-			required-opps = <&domain_opp_3>, <&domain_opp_3>;
+			required-opps = <&domain_opp_3>, <&domain_opp_1>;
 		};
 	};
 
