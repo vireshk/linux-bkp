@@ -117,17 +117,10 @@
 			operating-points-v2 = <&domain_opp_table_parent>;
 		};
 
-		foo: foo-power-domain@09000000 {
-			compatible = "foo,genpd";
-			#power-domain-cells = <0>;
-			operating-points-v2 = <&domain_opp_table>;
-			power-domains = <&foo_parent>;
-		};
-
-		foo1: foo-power-domain@08000000 {
-			compatible = "foo,genpd1";
-			#power-domain-cells = <0>;
-			operating-points-v2 = <&domain_opp_table>;
+		foo: foo-power-domain@06000000 {
+			compatible = "foo_multi,genpd";
+			#power-domain-cells = <1>;
+			operating-points-v2 = <&domain_opp_table>, <&domain_opp_table>;
 			power-domains = <&foo_parent>;
 		};
 
@@ -142,7 +135,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu1: cpu@1 {
@@ -156,7 +149,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu2: cpu@2 {
@@ -170,7 +163,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu3: cpu@3 {
@@ -184,7 +177,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu4: cpu@100 {
@@ -198,7 +191,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu5: cpu@101 {
@@ -212,7 +205,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu6: cpu@102 {
@@ -226,7 +219,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		cpu7: cpu@103 {
@@ -240,7 +233,7 @@
 			cpu-idle-states = <&CPU_SLEEP &CLUSTER_SLEEP>;
 			#cooling-cells = <2>; /* min followed by max */
 			dynamic-power-coefficient = <311>;
-			power-domains = <&foo>, <&foo1>;
+			power-domains = <&foo 0>, <&foo 1>;
 		};
 
 		CLUSTER0_L2: l2-cache0 {
