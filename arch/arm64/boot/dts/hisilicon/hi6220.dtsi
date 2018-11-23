@@ -41,15 +41,15 @@
 
 		domain_opp_1: opp00 {
 			qcom,level = <1>;
-			required-opps = <&domain_opp_p1>;
+			required-opps = <&domain_opp_1>;
 		};
 		domain_opp_2: opp01 {
 			qcom,level = <2>;
-			required-opps = <&domain_opp_p2>;
+			required-opps = <&domain_opp_2>;
 		};
 		domain_opp_3: opp02 {
 			qcom,level = <3>;
-			required-opps = <&domain_opp_p3>;
+			required-opps = <&domain_opp_3>;
 		};
 	};
 
@@ -114,13 +114,13 @@
 		foo_parent: foo-power-domain@07000000 {
 			compatible = "foo,genpd_parent";
 			#power-domain-cells = <0>;
-			operating-points-v2 = <&domain_opp_table_parent>;
+			operating-points-v2 = <&domain_opp_table>;
 		};
 
 		foo: foo-power-domain@06000000 {
 			compatible = "foo_multi,genpd";
 			#power-domain-cells = <1>;
-			operating-points-v2 = <&domain_opp_table>, <&domain_opp_table>;
+			operating-points-v2 = <&domain_opp_table>;
 			power-domains = <&foo_parent>;
 		};
 
