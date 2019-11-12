@@ -345,9 +345,6 @@
 			compatible = "arm,pl011", "arm,primecell";
 			reg = <0x0 0xf7113000 0x0 0x1000>;
 			interrupts = <GIC_SPI 39 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&sys_ctrl HI6220_UART3_PCLK>,
-				 <&sys_ctrl HI6220_UART3_PCLK>;
-			clock-names = "uartclk", "apb_pclk";
 			pinctrl-names = "default";
 			pinctrl-0 = <&uart3_pmx_func &uart3_cfg_func>;
 			status = "disabled";
