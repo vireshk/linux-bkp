@@ -50,6 +50,81 @@
 	};
 };
 
+&avb1 {
+	pinctrl-0 = <&avb1_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&phy1>;
+	phy-mode = "rgmii-txid";
+	status = "okay";
+
+	phy1: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio5>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio5 15 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&avb2 {
+	pinctrl-0 = <&avb2_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&phy2>;
+	phy-mode = "rgmii-txid";
+	status = "okay";
+
+	phy2: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio6>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio6 15 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&avb3 {
+	pinctrl-0 = <&avb3_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&phy3>;
+	phy-mode = "rgmii-txid";
+	status = "okay";
+
+	phy3: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio7 15 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&avb4 {
+	pinctrl-0 = <&avb4_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&phy4>;
+	phy-mode = "rgmii-txid";
+	status = "okay";
+
+	phy4: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio8>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio8 15 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&avb5 {
+	pinctrl-0 = <&avb5_pins>;
+	pinctrl-names = "default";
+	phy-handle = <&phy5>;
+	phy-mode = "rgmii-txid";
+	status = "okay";
+
+	phy5: ethernet-phy@0 {
+		reg = <0>;
+		interrupt-parent = <&gpio9>;
+		interrupts = <16 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio9 15 GPIO_ACTIVE_LOW>;
+	};
+};
+
 &extal_clk {
 	clock-frequency = <16666666>;
 };
@@ -131,6 +206,91 @@
 			drive-strength = <21>;
 		};
 
+	};
+
+	avb1_pins: avb1 {
+		mux {
+			groups = "avb1_link", "avb1_mdio", "avb1_rgmii", "avb1_txcrefclk";
+			function = "avb1";
+		};
+
+		pins_mdio {
+			groups = "avb1_mdio";
+			drive-strength = <21>;
+		};
+
+		pins_mii {
+			groups = "avb1_rgmii";
+			drive-strength = <21>;
+		};
+	};
+
+	avb2_pins: avb2 {
+		mux {
+			groups = "avb2_link", "avb2_mdio", "avb2_rgmii", "avb2_txcrefclk";
+			function = "avb2";
+		};
+
+		pins_mdio {
+			groups = "avb2_mdio";
+			drive-strength = <21>;
+		};
+
+		pins_mii {
+			groups = "avb2_rgmii";
+			drive-strength = <21>;
+		};
+	};
+
+	avb3_pins: avb3 {
+		mux {
+			groups = "avb3_link", "avb3_mdio", "avb3_rgmii", "avb3_txcrefclk";
+			function = "avb3";
+		};
+
+		pins_mdio {
+			groups = "avb3_mdio";
+			drive-strength = <21>;
+		};
+
+		pins_mii {
+			groups = "avb3_rgmii";
+			drive-strength = <21>;
+		};
+	};
+
+	avb4_pins: avb4 {
+		mux {
+			groups = "avb4_link", "avb4_mdio", "avb4_rgmii", "avb4_txcrefclk";
+			function = "avb4";
+		};
+
+		pins_mdio {
+			groups = "avb4_mdio";
+			drive-strength = <21>;
+		};
+
+		pins_mii {
+			groups = "avb4_rgmii";
+			drive-strength = <21>;
+		};
+	};
+
+	avb5_pins: avb5 {
+		mux {
+			groups = "avb5_link", "avb5_mdio", "avb5_rgmii", "avb5_txcrefclk";
+			function = "avb5";
+		};
+
+		pins_mdio {
+			groups = "avb5_mdio";
+			drive-strength = <21>;
+		};
+
+		ins_mii {
+			groups = "avb5_rgmii";
+			drive-strength = <21>;
+		};
 	};
 
 	i2c0_pins: i2c0 {
