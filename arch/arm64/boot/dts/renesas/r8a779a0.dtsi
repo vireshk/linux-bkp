@@ -129,6 +129,12 @@
 			status = "disabled";
 		};
 
+		dmac1: dma-controller@e7350000 {
+			reg = <0 0xe7350000 0 0x1000>;
+			#dma-cells = <1>;
+			/* placeholder */
+		};
+
 		gic: interrupt-controller@f1000000 {
 			compatible = "arm,gic-v3";
 			#interrupt-cells = <3>;
