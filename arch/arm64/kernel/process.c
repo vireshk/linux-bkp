@@ -204,9 +204,7 @@ void machine_restart(char *cmd)
 	else
 		do_kernel_restart(cmd);
 
-	/*
-	 * Whoops - the architecture was unable to reboot.
-	 */
+	/* Whoops - the architecture was unable to reboot */
 	printk("Reboot failed -- System halted\n");
 	while (1);
 }
