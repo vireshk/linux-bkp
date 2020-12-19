@@ -207,9 +207,7 @@ void machine_restart(char *cmd)
 	/* Give a grace period for failure to restart of 1s */
 	mdelay(1000);
 
-	/*
-	 * Whoops - the architecture was unable to reboot.
-	 */
+	/* Whoops - the architecture was unable to reboot */
 	printk("Reboot failed -- System halted\n");
 	while (1);
 }
