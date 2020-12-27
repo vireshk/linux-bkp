@@ -110,7 +110,7 @@
 			interrupts = <GIC_SPI 832 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 916>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 916>;
+			resets =  <&cpg 1331>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 0 28>;
@@ -124,7 +124,7 @@
 			interrupts = <GIC_SPI 836 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 915>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 915>;
+			resets =  <&cpg 1330>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 32 31>;
@@ -138,7 +138,7 @@
 			interrupts = <GIC_SPI 840 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 915>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 915>;
+			resets =  <&cpg 1330>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 64 25>;
@@ -152,7 +152,7 @@
 			interrupts = <GIC_SPI 844 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 916>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 916>;
+			resets =  <&cpg 1331>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 96 17>;
@@ -166,7 +166,7 @@
 			interrupts = <GIC_SPI 848 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 917>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 917>;
+			resets =  <&cpg 1400>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 128 27>;
@@ -180,7 +180,7 @@
 			interrupts = <GIC_SPI 852 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 917>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 917>;
+			resets =  <&cpg 1400>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 160 21>;
@@ -194,7 +194,7 @@
 			interrupts = <GIC_SPI 856 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 918>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 918>;
+			resets =  <&cpg 1401>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 192 21>;
@@ -208,7 +208,7 @@
 			interrupts = <GIC_SPI 860 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 918>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 918>;
+			resets =  <&cpg 1401>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 224 21>;
@@ -222,7 +222,7 @@
 			interrupts = <GIC_SPI 864 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 918>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 918>;
+			resets =  <&cpg 1401>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 256 21>;
@@ -236,7 +236,7 @@
 			interrupts = <GIC_SPI 868 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&cpg CPG_MOD 918>;
 			power-domains = <&sysc R8A779A0_PD_ALWAYS_ON>;
-			resets =  <&cpg 918>;
+			resets =  <&cpg 1401>;
 			gpio-controller;
 			#gpio-cells = <2>;
 			// gpio-ranges = <&pfc 0 288 21>;
