@@ -205,6 +205,9 @@
 };
 
 &pfc {
+	pinctrl-0 = <&scif_clk_pins>;
+	pinctrl-names = "default";
+
 	avb0_pins: avb0 {
 		mux {
 			groups = "avb0_link", "avb0_mdio", "avb0_rgmii", "avb0_txcrefclk";
@@ -348,9 +351,31 @@
 		function = "mmc";
 		power-source = <1800>;
 	};
+
+	scif0_pins: scif0 {
+		groups = "scif0_data", "scif0_ctrl";
+		function = "scif0";
+	};
+
+	scif_clk_pins: scif_clk {
+		groups = "scif_clk";
+		function = "scif_clk";
+	};
 };
 
 &rwdt {
 	timeout-sec = <60>;
 	status = "okay";
+};
+
+&scif0 {
+	pinctrl-0 = <&scif0_pins>;
+	pinctrl-names = "default";
+
+	uart-has-rtscts;
+	status = "okay";
+};
+
+&scif_clk {
+	clock-frequency = <24000000>;
 };
