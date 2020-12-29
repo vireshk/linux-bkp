@@ -109,61 +109,13 @@
 		};
 	};
 
-	keys {
-		compatible = "gpio-keys";
+	i2c2-analyzer {
+		compatible = "gpio-logic-analyzer";
 
-		pinctrl-0 = <&keys_pins>;
-		pinctrl-names = "default";
+		probe-gpios = <&gpio6 21 GPIO_OPEN_DRAIN>,
+				<&gpio6 4 GPIO_OPEN_DRAIN>;
 
-		key-1 {
-			gpios = <&gpio5 17 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_1>;
-			label = "SW4-1";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-2 {
-			gpios = <&gpio5 20 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_2>;
-			label = "SW4-2";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-3 {
-			gpios = <&gpio5 22 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_3>;
-			label = "SW4-3";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-4 {
-			gpios = <&gpio5 23 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_4>;
-			label = "SW4-4";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-a {
-			gpios = <&gpio6 11 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_A>;
-			label = "TSW0";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-b {
-			gpios = <&gpio6 12 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_B>;
-			label = "TSW1";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
-		key-c {
-			gpios = <&gpio6 13 GPIO_ACTIVE_LOW>;
-			linux,code = <KEY_C>;
-			label = "TSW2";
-			wakeup-source;
-			debounce-interval = <20>;
-		};
+		probe-names = "SCL", "SDA";
 	};
 
 	reg_1p8v: regulator0 {
@@ -414,7 +366,7 @@
 
 	status = "okay";
 
-	clock-frequency = <100000>;
+	clock-frequency = <400000>;
 
 	ak4613: codec@10 {
 		compatible = "asahi-kasei,ak4613";
