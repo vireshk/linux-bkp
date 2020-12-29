@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/misc/gpio-logic-analyzer.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Bindings for a GPIO based logic analyzer
+
+maintainers:
+  - Wolfram Sang <wsa@sang-engineering.com>
+
+properties:
+  compatible:
+    items:
+      - const: gpio-logic-analyzer
+
+  probe-gpios:
+    description:
+      gpios used as probes for the logic analyzer
+
+  probe-names:
+    description:
+      names used to distinguish the probes
+
+  required:
+    - compatible
+    - probe-gpios
+
+additionalProperties: false
+
+examples:
+  - |
+    i2c-analyzer {
+            compatible = "gpio-logic-analyzer";
+
+            probe-gpios = <&gpio6 21 GPIO_OPEN_DRAIN>, <&gpio6 4 GPIO_OPEN_DRAIN>;
+            probe-names = "SCL", "SDA";
+    };
+
+...

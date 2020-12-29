@@ -27,6 +27,7 @@ whole; patches welcome!
    kgdb
    kselftest
    kunit/index
+   gpio-logic-analyzer
 
 
 .. only::  subproject and html
