@@ -445,6 +445,18 @@ config HISI_HIKEY_USB
 	  switching between the dual-role USB-C port and the USB-A host ports
 	  using only one USB controller.
 
+config GPIO_LOGIC_ANALYZER
+	tristate "Simple GPIO logic analyzer"
+	depends on GPIOLIB || COMPILE_TEST
+	help
+	  This option enables support for a simple logic analyzer using polled
+	  GPIOs. Use the 'tools/debugging/gpio-logic-analyzer' script with this
+	  driver. The script will make using it easier and can also isolate a
+	  CPU for the polling task. Note that this is still a last resort
+	  analyzer which can be affected by latencies and non-determinant code
+	  paths. However, for e.g. remote development, it may be useful to get
+	  a first view and aid further debugging.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
