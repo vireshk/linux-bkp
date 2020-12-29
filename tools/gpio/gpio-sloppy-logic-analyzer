@@ -1,0 +1,200 @@
+#! /bin/sh
+# Helper script for the Linux Kernel GPIO sloppy logic analyzer
+# 
+# Copyright (C) Wolfram Sang <wsa@sang-engineering.com>
+# Copyright (C) Renesas Electronics Corporation
+#
+# TODO: support SI units in command line parameters?
+
+INITCPU=
+SAMPLEFREQ=1000000
+NUMSAMPLES=250000
+LASYSFSDIR=
+CPUSETDIR='/dev/cpuset'
+LACPUSETDIR="$CPUSETDIR/gpio-sloppy-logic-analyzer"
+SYSFSDIR='/sys/kernel/debug/gpio-sloppy-logic-analyzer/'
+OUTPUTDIR="$PWD"
+TRIGGERDAT=
+TRIGGER_BINDAT=
+NEEDEDCMDS='taskset zip'
+MAX_CHANS=8
+
+print_help()
+{
+	cat <<EOF
+$0 - helper script for the Linux Kernel Sloppy GPIO Logic Analyzer
+Available options:
+	-d|--duration-us <n>: number of microseconds to sample. Overrides -n, no default value.
+	-h|--help: print this help
+	-i|--init <n>: which CPU to isolate for sampling. Only needed once. Default <1>.
+		       Remember that a more powerful CPU gives you higher sample speeds.
+		       Also CPU0 is not recommended as it usually does extra bookkeeping.
+	-n|--num_samples <n>: number of samples to acquire. Default <$NUMSAMPLES>
+	-o|--output-dir <str>: directory to put the result files. Default: current dir
+	-p|--path <str>: path to Logic Analyzer dir in case you have multiple instances.
+			 Default to first instance found.
+	-s|--sample_freq <n>: desired sample frequency. Might be capped if too large. Default: 1MHz.
+	-t|--trigger <str>: pattern to use as trigger. <str> consists of two-char pairs. First
+			    char is channel number starting at "1". Second char is trigger level:
+			    "L" - low; "H" - high; "R" - rising; "F" - falling
+			    These pairs can be combined with "+", so "1H+2F" triggers when probe 1
+			    is high while probe 2 has a falling edge. You can have multiple triggers
+			    combined with ",". So, "1H+2F,1H+2R" is like the example before but it
+			    waits for a rising edge on probe 2 while probe 1 is still high after the
+			    first trigger has been met.
+			    Trigger data will only be used for the next capture and then be erased.
+Examples:
+Samples $NUMSAMPLES at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
+	'$0'
+Samples 50us at 2MHz waiting for falling edge on channel 2. CPU usage as above.
+	'$0 -d 50 -s 2000000 -t "2F"'
+
+Note that the process exits after checking all parameters but a sub-process still works in
+the background. The result is only available once the sub-process finishes. As the time of
+writing, the sub-process is not killable, so be extra careful that your triggers work.
+
+Result is a .sr file to be consumed with PulseView from the free Sigrok project. It is
+a zip file which also contains the binary sample data which may be consumed by others.
+The filename is the logic analyzer instance name plus a since-epoch timestamp.
+EOF
+}
+
+set_newmask()
+{
+	local f
+	for f in $(find $1 -iname "$2"); do echo $NEWMASK > $f 2>/dev/null; done
+}
+
+init_cpu()
+{
+	local CPU OLDMASK
+
+	CPU="$1"
+	[ ! -d $CPUSETDIR ] && mkdir $CPUSETDIR
+	mount | grep -q $CPUSETDIR || mount -t cpuset cpuset $CPUSETDIR
+	[ ! -d $LACPUSETDIR ] && mkdir $LACPUSETDIR
+
+	echo $CPU > $LACPUSETDIR/cpus
+	echo 1 > $LACPUSETDIR/cpu_exclusive
+	echo 0 > $LACPUSETDIR/mems
+
+	OLDMASK=$(cat /proc/irq/default_smp_affinity)
+	val=$((0x$OLDMASK & ~(1 << $CPU)))
+	NEWMASK=$(printf "%x" $val)
+
+	set_newmask '/proc/irq' '*smp_affinity'
+	set_newmask '/sys/devices/virtual/workqueue/' 'cpumask'
+
+	# Move tasks away from isolated CPU
+	for p in $(ps -o pid | tail -n +2); do
+		MASK=$(taskset -p $p)
+		[ "${MASK##*: }" != "$OLDMASK" ] && continue
+		taskset -p $NEWMASK $p
+	done 2>/dev/null >/dev/null
+
+	echo 1 > /sys/module/rcupdate/parameters/rcu_cpu_stall_suppress
+}
+
+parse_triggerdat()
+{
+	local OLDIFS mask val1 val2 chan mode bit t c
+
+	OLDIFS="$IFS"
+	IFS=','; for t in $1; do
+		mask=0; val1=0; val2=0
+		IFS='+'; for c in $t; do
+			chan=${c%[lhfrLHFR]}
+			mode=${c#$chan}
+			# Check if we could parse something and the channel number fits
+			[ $chan != $c -a $chan -le $MAX_CHANS ] 2> /dev/null || { echo "Syntax error: $c" && exit 1; }
+			bit=$((1 << ($chan - 1)))
+			mask=$(($mask | $bit))
+			case $mode in
+				[hH]) val1=$(($val1 | $bit)); val2=$(($val2 | $bit));;
+				[fF]) val1=$(($val1 | $bit));;
+				[rR]) val2=$(($val2 | $bit));;
+			esac
+		done
+		TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val1)"
+		[ $val1 -ne $val2 ] &&	TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val2)"
+	done
+	IFS="$OLDIFS"
+}
+
+do_capture()
+{
+	local SRTMP ZIPNAME
+
+	taskset $1 echo 1 > $LASYSFSDIR/capture
+
+	SRTMP=$(mktemp -d)
+	echo 1 > $SRTMP/version
+	cp $LASYSFSDIR/sample_data $SRTMP/logic-1-1
+	cat > $SRTMP/metadata <<EOF
+[global]
+sigrok version=0.2.0
+
+[device 1]
+capturefile=logic-1
+total probes=$(cat $LASYSFSDIR/meta_data | wc -l)
+samplerate=${SAMPLEFREQ}Hz
+unitsize=1
+EOF
+	cat $LASYSFSDIR/meta_data >> $SRTMP/metadata
+
+	ZIPNAME="$OUTPUTDIR/${LASYSFSDIR##*/}-$(date +%s).sr"
+	zip -jq $ZIPNAME $SRTMP/*
+	rm -rf $SRTMP
+}
+
+REP=$(getopt -a -l path:,init:,sample_freq:,num_samples:,duration-us:,trigger:,output-dir:,help -o i:s:n:d:t:o:h -- "$@") || exit 1
+eval set -- "$REP"
+while true; do
+	case "$1" in
+	-d|--duration-us) DURATION="$2"; shift 2;;
+	-h|--help) print_help; exit 0;;
+	-i|--init) INITCPU="$2"; shift 2;;
+	-n|--num_samples) NUMSAMPLES="$2"; shift 2;;
+	-o|--output-dir) OUTPUTDIR="$2"; shift 2;;
+	-p|--path) LASYSFSDIR="$2"; shift 2;;
+	-s|--sample_freq) SAMPLEFREQ="$2"; shift 2;;
+	-t|--trigger) TRIGGERDAT="$2"; shift 2;;
+	--)	shift; break;;
+	*)	echo "error parsing commandline: $@"; exit 1;;
+	esac
+done
+
+for f in $NEEDEDCMDS; do
+	command -v $f >/dev/null || { echo "Command '$f' not found"; exit 1; }
+done
+
+[ $SAMPLEFREQ -eq 0 ] && echo "Invalid sample frequency" && exit 1
+
+[ -z "$LASYSFSDIR" ] && LASYSFSDIR="$SYSFSDIR/$(ls -1 $SYSFSDIR | head -n1)"
+[ ! -d "$LASYSFSDIR" ] && echo "LA directory '$LASYSFSDIR' not found!" && exit 1
+
+[ -n "$INITCPU" ] && init_cpu $INITCPU
+[ ! -d "$LACPUSETDIR" ] && echo "Auto-Isolating CPU1" && init_cpu 1
+
+NDELAY=$((1000000000 / $SAMPLEFREQ))
+NDELAY_ACQ=$(cat $LASYSFSDIR/delay_ns_acquisition)
+[ $NDELAY_ACQ -eq 0 ] && echo "Invalid acquisition delay received" && exit 1
+NDELAY_USER=$(($NDELAY - $NDELAY_ACQ))
+MAXFREQ=$((1000000000 / $NDELAY_ACQ))
+
+[ $NDELAY_USER -lt 0 ] && NDELAY_USER=0 && SAMPLEFREQ=$MAXFREQ && echo "Capping sample_freq to $MAXFREQ"
+echo $NDELAY_USER > $LASYSFSDIR/delay_ns_user
+
+[ -n "$DURATION" ] && NUMSAMPLES=$(($SAMPLEFREQ * $DURATION / 1000000))
+echo $NUMSAMPLES > $LASYSFSDIR/buf_size
+
+if [ -n "$TRIGGERDAT" ]; then
+	parse_triggerdat $TRIGGERDAT
+	printf "$TRIGGER_BINDAT" > $LASYSFSDIR/trigger 2>/dev/null
+	[ $? -gt 0 ] && echo "Trigger data '$TRIGGERDAT' rejected" && exit 1
+fi
+
+CPU=$(cat $LACPUSETDIR/effective_cpus)
+[ -z "$CPU" ] && echo "No isolated CPU found" && exit 1
+CPUMASK=$((1 << $CPU))
+do_capture $CPUMASK &
