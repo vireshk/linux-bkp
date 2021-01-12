@@ -2432,7 +2432,7 @@ static int dpcm_run_update_startup(struct snd_soc_pcm_runtime *fe, int stream)
 		snd_soc_dpcm_get_substream(fe, stream);
 	struct snd_soc_dpcm *dpcm;
 	enum snd_soc_dpcm_trigger trigger = fe->dai_link->trigger[stream];
-	int ret;
+	int ret = 0;
 	unsigned long flags;
 
 	dev_dbg(fe->dev, "ASoC: runtime %s open on FE %s\n",
@@ -2440,8 +2440,13 @@ static int dpcm_run_update_startup(struct snd_soc_pcm_runtime *fe, int stream)
 
 	/* Only start the BE if the FE is ready */
 	if (fe->dpcm[stream].state == SND_SOC_DPCM_STATE_HW_FREE ||
-		fe->dpcm[stream].state == SND_SOC_DPCM_STATE_CLOSE)
-		return -EINVAL;
+		fe->dpcm[stream].state == SND_SOC_DPCM_STATE_CLOSE) {
+		ret = -EINVAL;
+		dev_err(fe->dev, "ASoC: FE %s is not ready %d\n",
+			fe->dai_link->name, fe->dpcm[stream].state);
+		ret = -EINVAL;
+		goto disconnect;
+	}
 
 	/* startup must always be called for new BEs */
 	ret = dpcm_be_dai_startup(fe, stream);
@@ -2502,12 +2507,18 @@ hw_free:
 close:
 	dpcm_be_dai_shutdown(fe, stream);
 disconnect:
-	/* disconnect any closed BEs */
+	/* disconnect any pending BEs */
 	spin_lock_irqsave(&fe->card->dpcm_lock, flags);
 	for_each_dpcm_be(fe, stream, dpcm) {
 		struct snd_soc_pcm_runtime *be = dpcm->be;
-		if (be->dpcm[stream].state == SND_SOC_DPCM_STATE_CLOSE)
-			dpcm->state = SND_SOC_DPCM_LINK_STATE_FREE;
+
+		/* is this op for this BE ? */
+		if (!snd_soc_dpcm_be_can_update(fe, be, stream))
+			continue;
+
+		if (be->dpcm[stream].state == SND_SOC_DPCM_STATE_CLOSE ||
+			be->dpcm[stream].state == SND_SOC_DPCM_STATE_NEW)
+				dpcm->state = SND_SOC_DPCM_LINK_STATE_FREE;
 	}
 	spin_unlock_irqrestore(&fe->card->dpcm_lock, flags);
 
