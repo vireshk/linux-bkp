@@ -14,7 +14,7 @@
 
 	aliases {
 		ethernet0 = &avb0;
-		serial0 = &scif0;
+		serial0 = &hscif0;
 	};
 
 	chosen {
