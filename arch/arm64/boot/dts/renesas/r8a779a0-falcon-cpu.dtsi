@@ -160,9 +160,9 @@
 		power-source = <1800>;
 	};
 
-	scif0_pins: scif0 {
-		groups = "scif0_data", "scif0_ctrl";
-		function = "scif0";
+	hscif0_pins: hscif0 {
+		groups = "hscif0_data", "hscif0_ctrl";
+		function = "hscif0";
 	};
 
 	scif_clk_pins: scif_clk {
@@ -172,7 +172,11 @@
 };
 
 &scif0 {
-	pinctrl-0 = <&scif0_pins>;
+	status = "disabled";
+};
+
+&hscif0 {
+	pinctrl-0 = <&hscif0_pins>;
 	pinctrl-names = "default";
 
 	uart-has-rtscts;
