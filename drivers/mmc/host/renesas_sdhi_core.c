@@ -32,6 +32,7 @@
 #include <linux/pinctrl/pinctrl-state.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_qos.h>
 #include <linux/regulator/consumer.h>
 #include <linux/reset.h>
 #include <linux/sh_dma.h>
@@ -1151,6 +1152,9 @@ int renesas_sdhi_probe(struct platform_device *pdev,
 		host->ops.hs400_downgrade = renesas_sdhi_disable_scc;
 		host->ops.hs400_complete = renesas_sdhi_hs400_complete;
 	}
+
+	/* keep tmio_mmc_host_probe() from setting latency limit too low */
+	dev_pm_qos_expose_latency_limit(&pdev->dev, 100000);
 
 	ret = tmio_mmc_host_probe(host);
 	if (ret < 0)
