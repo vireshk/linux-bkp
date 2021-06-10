@@ -225,6 +225,7 @@ static void virtio_gpio_irq_prepare(struct virtio_gpio *vgpio, u16 gpio)
 	sgs[0] = &req_sg;
 	sgs[1] = &res_sg;
 
+	pr_info("%s: %d: %d\n", __func__, __LINE__, gpio);
 	ret = virtqueue_add_sgs(vgpio->event_vq, sgs, 1, 1, irq_line, GFP_ATOMIC);
 	if (ret) {
 		dev_err(&vgpio->vdev->dev, "failed to add request to eventq\n");
@@ -241,6 +242,7 @@ static void virtio_gpio_irq_enable(struct irq_data *d)
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 	struct vgpio_irq_line *irq_line = &vgpio->irq_lines[d->hwirq];
 
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
 	raw_spin_lock(&vgpio->eventq_lock);
 	irq_line->disabled = false;
 	irq_line->masked = false;
@@ -257,7 +259,9 @@ static void virtio_gpio_irq_disable(struct irq_data *d)
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 	struct vgpio_irq_line *irq_line = &vgpio->irq_lines[d->hwirq];
 
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
 	raw_spin_lock(&vgpio->eventq_lock);
+
 	irq_line->disabled = true;
 	irq_line->masked = true;
 	irq_line->queue_pending = false;
@@ -273,6 +277,7 @@ static void virtio_gpio_irq_mask(struct irq_data *d)
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 	struct vgpio_irq_line *irq_line = &vgpio->irq_lines[d->hwirq];
 
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
 	raw_spin_lock(&vgpio->eventq_lock);
 	irq_line->masked = true;
 	raw_spin_unlock(&vgpio->eventq_lock);
@@ -288,7 +293,8 @@ static void virtio_gpio_irq_unmask(struct irq_data *d)
 	raw_spin_lock(&vgpio->eventq_lock);
 	irq_line->masked = false;
 
-	pr_info("%s: %d\n", __func__, __LINE__);
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
+
 	/* Queue the buffer unconditionally on unmask */
 	virtio_gpio_irq_prepare(vgpio, d->hwirq);
 	raw_spin_unlock(&vgpio->eventq_lock);
@@ -300,6 +306,7 @@ static int virtio_gpio_irq_set_type(struct irq_data *d, unsigned int type)
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 	struct vgpio_irq_line *irq_line = &vgpio->irq_lines[d->hwirq];
 
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
 	switch (type) {
 	case IRQ_TYPE_EDGE_RISING:
 		type = VIRTIO_GPIO_IRQ_TYPE_EDGE_RISING;
@@ -334,6 +341,7 @@ static void virtio_gpio_irq_bus_lock(struct irq_data *d)
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 
 	mutex_lock(&vgpio->irq_lock);
+	pr_info("%s: %d: %lu\n", __func__, __LINE__, d->hwirq);
 }
 
 static void virtio_gpio_irq_bus_sync_unlock(struct irq_data *d)
@@ -344,7 +352,9 @@ static void virtio_gpio_irq_bus_sync_unlock(struct irq_data *d)
 	u8 type = irq_line->disabled ? VIRTIO_GPIO_IRQ_TYPE_NONE : irq_line->type;
 	unsigned long flags;
 
-	pr_info("%s: %d\n", __func__, __LINE__);
+	pr_info("%s: %d: %lu: %d: %d\n", __func__, __LINE__, d->hwirq,
+		irq_line->update_pending, irq_line->type);
+
 	if (irq_line->update_pending) {
 		irq_line->update_pending = false;
 		virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_IRQ_TYPE, d->hwirq, type,
@@ -442,6 +452,8 @@ static void virtio_gpio_event_vq(struct virtqueue *vq)
 		ret = generic_handle_domain_irq(vgpio->gc.irq.domain, gpio);
 		if (ret)
 			dev_err(dev, "failed to handle interrupt: %d\n", ret);
+
+		pr_info("IRQ finished %s: %d: %d\n", __func__, __LINE__, gpio);
 	}
 }
 
@@ -549,6 +561,8 @@ static const char **virtio_gpio_get_names(struct virtio_gpio *vgpio,
 	return names;
 }
 
+#include "gpio-virtio-test.c"
+
 static int virtio_gpio_probe(struct virtio_device *vdev)
 {
 	struct virtio_gpio_config config;
@@ -635,6 +649,9 @@ static int virtio_gpio_probe(struct virtio_device *vdev)
 		virtio_gpio_free_vqs(vdev);
 		dev_err(dev, "Failed to add virtio-gpio controller\n");
 	}
+
+	if (virtio_has_feature(vdev, VIRTIO_GPIO_F_IRQ))
+		test_gpio(vgpio->gc.base);
 
 	return ret;
 }
