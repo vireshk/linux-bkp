@@ -705,6 +705,10 @@ static int renesas_sdhi_execute_tuning(struct mmc_host *mmc, u32 opcode)
 
 		if (cmd_error)
 			mmc_send_abort_tuning(mmc, opcode);
+
+		/* emulate CRC error on CMD12 of TAP1 every time */
+		if (i == 2)
+			mmc_retune_needed(mmc);
 	}
 
 	ret = renesas_sdhi_select_tuning(host);
