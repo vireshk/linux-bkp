@@ -102,6 +102,7 @@ void mmc_unregister_host_class(void)
  */
 void mmc_retune_enable(struct mmc_host *host)
 {
+	mmc_retune_clear(host);
 	host->can_retune = 1;
 	if (host->retune_period)
 		mod_timer(&host->retune_timer,
