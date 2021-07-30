@@ -1,4 +1,4 @@
-#! /bin/sh
+#!/bin/sh
 # Helper script for the Linux Kernel GPIO sloppy logic analyzer
 # 
 # Copyright (C) Wolfram Sang <wsa@sang-engineering.com>
@@ -70,9 +70,9 @@ init_cpu()
 	local CPU OLDMASK
 
 	CPU="$1"
-	[ ! -d $CPUSETDIR ] && mkdir $CPUSETDIR
+	[ -d $CPUSETDIR ] || mkdir $CPUSETDIR
 	mount | grep -q $CPUSETDIR || mount -t cpuset cpuset $CPUSETDIR
-	[ ! -d $LACPUSETDIR ] && mkdir $LACPUSETDIR
+	[ -d $LACPUSETDIR ] || mkdir $LACPUSETDIR
 
 	echo $CPU > $LACPUSETDIR/cpus
 	echo 1 > $LACPUSETDIR/cpu_exclusive
@@ -116,7 +116,7 @@ parse_triggerdat()
 			esac
 		done
 		TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val1)"
-		[ $val1 -ne $val2 ] &&	TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val2)"
+		[ $val1 -ne $val2 ] && TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val2)"
 	done
 	IFS="$OLDIFS"
 }

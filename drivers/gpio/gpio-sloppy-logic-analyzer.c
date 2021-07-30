@@ -18,9 +18,9 @@
 #include <linux/gpio/consumer.h>
 #include <linux/init.h>
 #include <linux/ktime.h>
+#include <linux/mod_devicetable.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
-#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/property.h>
 #include <linux/slab.h>
@@ -34,8 +34,8 @@
 #define GPIO_LA_MAX_PROBES 8
 #define GPIO_LA_NUM_TESTS 1024
 
-#define gpio_la_get_array(d, sptr) gpiod_get_array_value((d)->ndescs, (d)->desc, \
-							 (d)->info, sptr);
+#define gpio_la_get_array(d, sptr) \
+	gpiod_get_array_value((d)->ndescs, (d)->desc, (d)->info, sptr)
 
 struct gpio_la_poll_priv {
 	struct mutex lock;
@@ -43,7 +43,8 @@ struct gpio_la_poll_priv {
 	unsigned long ndelay;
 	struct gpio_descs *descs;
 	struct debugfs_blob_wrapper blob;
-	struct dentry *debug_dir, *blob_dent;
+	struct dentry *debug_dir;
+	struct dentry *blob_dent;
 	struct debugfs_blob_wrapper meta;
 	unsigned long gpio_acq_delay;
 	struct device *dev;
@@ -57,7 +58,7 @@ static int fops_capture_set(void *data, u64 val)
 {
 	struct gpio_la_poll_priv *priv = data;
 	u8 *la_buf = priv->blob.data;
-	unsigned long state = 0;
+	unsigned long state;
 	int i, ret;
 
 	if (!val)
@@ -164,7 +165,7 @@ static ssize_t trigger_write(struct file *file, const char __user *ubuf,
 	char *buf;
 
 	/* upper limit is arbitrary */
-	if (count == 0 || count > 2048 || count & 1)
+	if (count > 2048 || count & 1)
 		return -EINVAL;
 
 	buf = memdup_user(ubuf, count);
@@ -223,6 +224,7 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 
 	for (i = 0; i < priv->descs->ndescs; i++) {
 		unsigned int add_len;
+		char *new_meta;
 
 		if (gpiod_cansleep(priv->descs->desc[i]))
 			return -EREMOTE;
@@ -231,9 +233,12 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 
 		/* '10' is length of 'probe00=\n\0' */
 		add_len = strlen(gpio_names[i]) + 10;
-		meta = devm_krealloc(dev, meta, meta_len + add_len, GFP_KERNEL);
-		if (!meta)
+
+		new_meta = devm_krealloc(dev, meta, meta_len + add_len, GFP_KERNEL);
+		if (!new_meta)
 			return -ENOMEM;
+
+		meta = new_meta;
 		snprintf(meta + meta_len, add_len, "probe%02d=%s\n", i + 1, gpio_names[i]);
 		/* ' - 1' to skip the NUL terminator */
 		meta_len += add_len - 1;

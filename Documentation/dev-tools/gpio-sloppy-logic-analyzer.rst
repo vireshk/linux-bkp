@@ -18,9 +18,9 @@ first view and aid further debugging.
 Setup
 =====
 
-Tell the kernel which GPIOs are used as probes. For a DT based system, you need
-to use the following bindings. Because these bindings are only for debugging,
-there is no official yaml file::
+Tell the kernel which GPIOs are used as probes. For a Device Tree based system,
+you need to use the following bindings. Because these bindings are only for
+debugging, there is no official schema::
 
     i2c-analyzer {
             compatible = "gpio-sloppy-logic-analyzer";
