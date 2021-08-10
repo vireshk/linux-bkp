@@ -76,7 +76,7 @@ init_cpu()
 	echo 0 > $LACPUSETDIR/mems
 
 	OLDMASK=$(cat /proc/irq/default_smp_affinity)
-	val=$((0x$OLDMASK & ~(1 << $ISOL_CPU)))
+	val=$((0x$OLDMASK & ~(1 << ISOL_CPU)))
 	NEWMASK=$(printf "%x" $val)
 
 	set_newmask '/proc/irq' '*smp_affinity'
@@ -102,12 +102,12 @@ parse_triggerdat()
 			mode=${elem#$chan}
 			# Check if we could parse something and the channel number fits
 			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || { echo "Syntax error: $elem" && exit 1; }
-			bit=$((1 << ($chan - 1)))
-			mask=$(($mask | $bit))
+			bit=$((1 << (chan - 1)))
+			mask=$((mask | bit))
 			case $mode in
-				[hH]) val1=$(($val1 | $bit)); val2=$(($val2 | $bit));;
-				[fF]) val1=$(($val1 | $bit));;
-				[rR]) val2=$(($val2 | $bit));;
+				[hH]) val1=$((val1 | bit)); val2=$((val2 | bit));;
+				[fF]) val1=$((val1 | bit));;
+				[rR]) val2=$((val2 | bit));;
 			esac
 		done
 		TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val1)"
@@ -169,16 +169,16 @@ done
 [ -n "$INITCPU" ] && init_cpu "$INITCPU"
 [ ! -d "$LACPUSETDIR" ] && echo "Auto-Isolating CPU1" && init_cpu 1
 
-NDELAY=$((1000000000 / $SAMPLEFREQ))
+NDELAY=$((1000000000 / SAMPLEFREQ))
 NDELAY_ACQ=$(cat "$LASYSFSDIR"/delay_ns_acquisition)
 [ "$NDELAY_ACQ" -eq 0 ] && echo "Invalid acquisition delay received" && exit 1
-NDELAY_USER=$(($NDELAY - $NDELAY_ACQ))
-MAXFREQ=$((1000000000 / $NDELAY_ACQ))
+NDELAY_USER=$((NDELAY - NDELAY_ACQ))
+MAXFREQ=$((1000000000 / NDELAY_ACQ))
 
 [ $NDELAY_USER -lt 0 ] && NDELAY_USER=0 && SAMPLEFREQ=$MAXFREQ && echo "Capping sample_freq to $MAXFREQ"
 echo $NDELAY_USER > "$LASYSFSDIR"/delay_ns_user
 
-[ -n "$DURATION" ] && NUMSAMPLES=$(($SAMPLEFREQ * $DURATION / 1000000))
+[ -n "$DURATION" ] && NUMSAMPLES=$((SAMPLEFREQ * DURATION / 1000000))
 echo $NUMSAMPLES > "$LASYSFSDIR"/buf_size
 
 if [ -n "$TRIGGERDAT" ]; then
@@ -189,5 +189,5 @@ fi
 
 CPU=$(cat $LACPUSETDIR/effective_cpus)
 [ -z "$CPU" ] && echo "No isolated CPU found" && exit 1
-CPUMASK=$((1 << $CPU))
+CPUMASK=$((1 << CPU))
 do_capture $CPUMASK &
