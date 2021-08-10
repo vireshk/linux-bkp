@@ -61,25 +61,22 @@ EOF
 
 set_newmask()
 {
-	local f
 	for f in $(find $1 -iname "$2"); do echo $NEWMASK > $f 2>/dev/null; done
 }
 
 init_cpu()
 {
-	local CPU OLDMASK
-
-	CPU="$1"
+	ISOL_CPU="$1"
 	[ -d $CPUSETDIR ] || mkdir $CPUSETDIR
 	mount | grep -q $CPUSETDIR || mount -t cpuset cpuset $CPUSETDIR
 	[ -d $LACPUSETDIR ] || mkdir $LACPUSETDIR
 
-	echo $CPU > $LACPUSETDIR/cpus
+	echo $ISOL_CPU > $LACPUSETDIR/cpus
 	echo 1 > $LACPUSETDIR/cpu_exclusive
 	echo 0 > $LACPUSETDIR/mems
 
 	OLDMASK=$(cat /proc/irq/default_smp_affinity)
-	val=$((0x$OLDMASK & ~(1 << $CPU)))
+	val=$((0x$OLDMASK & ~(1 << $ISOL_CPU)))
 	NEWMASK=$(printf "%x" $val)
 
 	set_newmask '/proc/irq' '*smp_affinity'
@@ -97,16 +94,14 @@ init_cpu()
 
 parse_triggerdat()
 {
-	local OLDIFS mask val1 val2 chan mode bit t c
-
 	OLDIFS="$IFS"
-	IFS=','; for t in $1; do
+	IFS=','; for trig in $1; do
 		mask=0; val1=0; val2=0
-		IFS='+'; for c in $t; do
-			chan=${c%[lhfrLHFR]}
-			mode=${c#$chan}
+		IFS='+'; for elem in $trig; do
+			chan=${elem%[lhfrLHFR]}
+			mode=${elem#$chan}
 			# Check if we could parse something and the channel number fits
-			[ $chan != $c -a $chan -le $MAX_CHANS ] 2> /dev/null || { echo "Syntax error: $c" && exit 1; }
+			[ $chan != $elem ] && [ $chan -le $MAX_CHANS ] || { echo "Syntax error: $elem" && exit 1; }
 			bit=$((1 << ($chan - 1)))
 			mask=$(($mask | $bit))
 			case $mode in
@@ -123,8 +118,6 @@ parse_triggerdat()
 
 do_capture()
 {
-	local SRTMP ZIPNAME
-
 	taskset $1 echo 1 > $LASYSFSDIR/capture
 
 	SRTMP=$(mktemp -d)
