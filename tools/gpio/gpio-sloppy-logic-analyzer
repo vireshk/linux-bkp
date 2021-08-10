@@ -101,7 +101,7 @@ parse_triggerdat()
 			chan=${elem%[lhfrLHFR]}
 			mode=${elem#$chan}
 			# Check if we could parse something and the channel number fits
-			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || { echo "Syntax error: $elem" && exit 1; }
+			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || { echo "Trigger syntax error: $elem" && exit 1; }
 			bit=$((1 << (chan - 1)))
 			mask=$((mask | bit))
 			case $mode in
@@ -129,7 +129,7 @@ sigrok version=0.2.0
 
 [device 1]
 capturefile=logic-1
-total probes=$(cat "$LASYSFSDIR"/meta_data | wc -l)
+total probes=$(wc -l < "$LASYSFSDIR"/meta_data)
 samplerate=${SAMPLEFREQ}Hz
 unitsize=1
 EOF
@@ -153,7 +153,7 @@ while true; do
 	-s|--sample_freq) SAMPLEFREQ="$2"; shift 2;;
 	-t|--trigger) TRIGGERDAT="$2"; shift 2;;
 	--)	shift; break;;
-	*)	echo "error parsing commandline: $@"; exit 1;;
+	*)	echo "error parsing commandline: $*"; exit 1;;
 	esac
 done
 
@@ -163,7 +163,7 @@ done
 
 [ "$SAMPLEFREQ" -eq 0 ] && echo "Invalid sample frequency" && exit 1
 
-[ -z "$LASYSFSDIR" ] && LASYSFSDIR="$SYSFSDIR/$(ls -1 $SYSFSDIR | head -n1)"
+[ -z "$LASYSFSDIR" ] && LASYSFSDIR="$(find $SYSFSDIR -mindepth 1 -type d -print -quit)"
 [ ! -d "$LASYSFSDIR" ] && echo "LA directory '$LASYSFSDIR' not found!" && exit 1
 
 [ -n "$INITCPU" ] && init_cpu "$INITCPU"
@@ -183,8 +183,7 @@ echo $NUMSAMPLES > "$LASYSFSDIR"/buf_size
 
 if [ -n "$TRIGGERDAT" ]; then
 	parse_triggerdat "$TRIGGERDAT"
-	printf "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null
-	[ $? -gt 0 ] && echo "Trigger data '$TRIGGERDAT' rejected" && exit 1
+	printf '%s' "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null || { echo "Trigger data '$TRIGGERDAT' rejected" && exit 1; }
 fi
 
 CPU=$(cat $LACPUSETDIR/effective_cpus)
