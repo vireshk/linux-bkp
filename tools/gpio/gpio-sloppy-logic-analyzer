@@ -169,6 +169,8 @@ done
 
 [ "$SAMPLEFREQ" -eq 0 ] && fail "Invalid sample frequency"
 
+[ -d "$SYSFSDIR" ] || fail "Could not find logic analyzer root dir '$SYSFSDIR'. Module loaded?"
+[ -x "$SYSFSDIR" ] || fail "Could not access logic analyzer root dir '$SYSFSDIR'. Need root?"
 [ -z "$LASYSFSDIR" ] && LASYSFSDIR="$(find $SYSFSDIR -mindepth 1 -type d -print -quit)"
 [ ! -d "$LASYSFSDIR" ] && fail "LA directory '$LASYSFSDIR' not found!"
 
