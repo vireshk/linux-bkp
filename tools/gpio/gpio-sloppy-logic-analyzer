@@ -194,7 +194,7 @@ if [ -n "$TRIGGERDAT" ]; then
 	printf '%s' "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null || fail "Trigger data '$TRIGGERDAT' rejected"
 fi
 
-CPU=$(cat $LACPUSETDIR/effective_cpus)
-[ -z "$CPU" ] && fail "No isolated CPU found"
-CPUMASK=$((1 << CPU))
+WORKCPU=$(cat $LACPUSETDIR/effective_cpus)
+[ -z "$WORKCPU" ] && fail "No isolated CPU found"
+CPUMASK=$((1 << WORKCPU))
 do_capture $CPUMASK &
