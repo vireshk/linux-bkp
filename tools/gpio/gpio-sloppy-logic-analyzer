@@ -6,18 +6,18 @@
 #
 # TODO: support SI units in command line parameters?
 
-INITCPU=
-SAMPLEFREQ=1000000
-NUMSAMPLES=250000
-LASYSFSDIR=
-CPUSETDIR='/dev/cpuset'
-LACPUSETDIR="$CPUSETDIR/gpio-sloppy-logic-analyzer"
-SYSFSDIR='/sys/kernel/debug/gpio-sloppy-logic-analyzer/'
-OUTPUTDIR="$PWD"
-TRIGGERDAT=
-TRIGGER_BINDAT=
-NEEDEDCMDS='taskset zip'
-MAX_CHANS=8
+initcpu=
+samplefreq=1000000
+numsamples=250000
+lasysfsdir=
+cpusetdir='/dev/cpuset'
+lacpusetdir="$cpusetdir/gpio-sloppy-logic-analyzer"
+sysfsdir='/sys/kernel/debug/gpio-sloppy-logic-analyzer/'
+outputdir="$PWD"
+triggerdat=
+trigger_bindat=
+neededcmds='taskset zip'
+max_chans=8
 
 print_help()
 {
@@ -29,7 +29,7 @@ Available options:
 	-i|--init <n>: which CPU to isolate for sampling. Only needed once. Default <1>.
 		       Remember that a more powerful CPU gives you higher sample speeds.
 		       Also CPU0 is not recommended as it usually does extra bookkeeping.
-	-n|--num_samples <n>: number of samples to acquire. Default <$NUMSAMPLES>
+	-n|--num_samples <n>: number of samples to acquire. Default <$numsamples>
 	-o|--output-dir <str>: directory to put the result files. Default: current dir
 	-p|--path <str>: path to Logic Analyzer dir in case you have multiple instances.
 			 Default to first instance found.
@@ -44,7 +44,7 @@ Available options:
 			    first trigger has been met.
 			    Trigger data will only be used for the next capture and then be erased.
 Examples:
-Samples $NUMSAMPLES at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
+Samples $numsamples at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
 	'$0'
 Samples 50us at 2MHz waiting for falling edge on channel 2. CPU usage as above.
 	'$0 -d 50 -s 2000000 -t "2F"'
@@ -67,32 +67,32 @@ fail()
 
 set_newmask()
 {
-	for f in $(find "$1" -iname "$2"); do echo "$NEWMASK" > "$f" 2>/dev/null; done
+	for f in $(find "$1" -iname "$2"); do echo "$newmask" > "$f" 2>/dev/null; done
 }
 
 init_cpu()
 {
-	ISOL_CPU="$1"
-	[ -d $CPUSETDIR ] || mkdir $CPUSETDIR
-	mount | grep -q $CPUSETDIR || mount -t cpuset cpuset $CPUSETDIR
-	[ -d $LACPUSETDIR ] || mkdir $LACPUSETDIR
+	isol_cpu="$1"
+	[ -d $cpusetdir ] || mkdir $cpusetdir
+	mount | grep -q $cpusetdir || mount -t cpuset cpuset $cpusetdir
+	[ -d $lacpusetdir ] || mkdir $lacpusetdir
 
-	echo "$ISOL_CPU" > $LACPUSETDIR/cpus
-	echo 1 > $LACPUSETDIR/cpu_exclusive
-	echo 0 > $LACPUSETDIR/mems
+	echo "$isol_cpu" > $lacpusetdir/cpus
+	echo 1 > $lacpusetdir/cpu_exclusive
+	echo 0 > $lacpusetdir/mems
 
-	OLDMASK=$(cat /proc/irq/default_smp_affinity)
-	val=$((0x$OLDMASK & ~(1 << ISOL_CPU)))
-	NEWMASK=$(printf "%x" $val)
+	oldmask=$(cat /proc/irq/default_smp_affinity)
+	val=$((0x$oldmask & ~(1 << isol_cpu)))
+	newmask=$(printf "%x" $val)
 
 	set_newmask '/proc/irq' '*smp_affinity'
 	set_newmask '/sys/devices/virtual/workqueue/' 'cpumask'
 
 	# Move tasks away from isolated CPU
 	for p in $(ps -o pid | tail -n +2); do
-		MASK=$(taskset -p "$p")
-		[ "${MASK##*: }" != "$OLDMASK" ] && continue
-		taskset -p "$NEWMASK" "$p"
+		mask=$(taskset -p "$p")
+		[ "${mask##*: }" != "$oldmask" ] && continue
+		taskset -p "$newmask" "$p"
 	done 2>/dev/null >/dev/null
 
 	echo 1 > /sys/module/rcupdate/parameters/rcu_cpu_stall_suppress
@@ -100,14 +100,14 @@ init_cpu()
 
 parse_triggerdat()
 {
-	OLDIFS="$IFS"
+	oldifs="$IFS"
 	IFS=','; for trig in $1; do
 		mask=0; val1=0; val2=0
 		IFS='+'; for elem in $trig; do
 			chan=${elem%[lhfrLHFR]}
 			mode=${elem#$chan}
 			# Check if we could parse something and the channel number fits
-			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || fail "Trigger syntax error: $elem"
+			[ "$chan" != "$elem" ] && [ "$chan" -le $max_chans ] || fail "Trigger syntax error: $elem"
 			bit=$((1 << (chan - 1)))
 			mask=$((mask | bit))
 			case $mode in
@@ -116,85 +116,85 @@ parse_triggerdat()
 				[rR]) val2=$((val2 | bit));;
 			esac
 		done
-		TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val1)"
-		[ $val1 -ne $val2 ] && TRIGGER_BINDAT="$TRIGGER_BINDAT$(printf '\\%o\\%o' $mask $val2)"
+		trigger_bindat="$trigger_bindat$(printf '\\%o\\%o' $mask $val1)"
+		[ $val1 -ne $val2 ] && trigger_bindat="$trigger_bindat$(printf '\\%o\\%o' $mask $val2)"
 	done
-	IFS="$OLDIFS"
+	IFS="$oldifs"
 }
 
 do_capture()
 {
-	taskset "$1" echo 1 > "$LASYSFSDIR"/capture
+	taskset "$1" echo 1 > "$lasysfsdir"/capture
 
-	SRTMP=$(mktemp -d)
-	echo 1 > "$SRTMP"/version
-	cp "$LASYSFSDIR"/sample_data "$SRTMP"/logic-1-1
-	cat > "$SRTMP"/metadata <<EOF
+	srtmp=$(mktemp -d)
+	echo 1 > "$srtmp"/version
+	cp "$lasysfsdir"/sample_data "$srtmp"/logic-1-1
+	cat > "$srtmp"/metadata <<EOF
 [global]
 sigrok version=0.2.0
 
 [device 1]
 capturefile=logic-1
-total probes=$(wc -l < "$LASYSFSDIR"/meta_data)
-samplerate=${SAMPLEFREQ}Hz
+total probes=$(wc -l < "$lasysfsdir"/meta_data)
+samplerate=${samplefreq}Hz
 unitsize=1
 EOF
-	cat "$LASYSFSDIR"/meta_data >> "$SRTMP"/metadata
+	cat "$lasysfsdir"/meta_data >> "$srtmp"/metadata
 
-	ZIPNAME="$OUTPUTDIR/${LASYSFSDIR##*/}-$(date +%s).sr"
-	zip -jq "$ZIPNAME" "$SRTMP"/*
-	rm -rf "$SRTMP"
+	zipname="$outputdir/${lasysfsdir##*/}-$(date +%s).sr"
+	zip -jq "$zipname" "$srtmp"/*
+	rm -rf "$srtmp"
 }
 
-REP=$(getopt -a -l path:,init:,sample_freq:,num_samples:,duration-us:,trigger:,output-dir:,help -o i:s:n:d:t:o:h -- "$@") || exit 1
-eval set -- "$REP"
+rep=$(getopt -a -l path:,init:,sample_freq:,num_samples:,duration-us:,trigger:,output-dir:,help -o i:s:n:d:t:o:h -- "$@") || exit 1
+eval set -- "$rep"
 while true; do
 	case "$1" in
-	-d|--duration-us) DURATION="$2"; shift 2;;
+	-d|--duration-us) duration="$2"; shift 2;;
 	-h|--help) print_help; exit 0;;
-	-i|--init) INITCPU="$2"; shift 2;;
-	-n|--num_samples) NUMSAMPLES="$2"; shift 2;;
-	-o|--output-dir) OUTPUTDIR="$2"; shift 2;;
-	-p|--path) LASYSFSDIR="$2"; shift 2;;
-	-s|--sample_freq) SAMPLEFREQ="$2"; shift 2;;
-	-t|--trigger) TRIGGERDAT="$2"; shift 2;;
+	-i|--init) initcpu="$2"; shift 2;;
+	-n|--num_samples) numsamples="$2"; shift 2;;
+	-o|--output-dir) outputdir="$2"; shift 2;;
+	-p|--path) lasysfsdir="$2"; shift 2;;
+	-s|--sample_freq) samplefreq="$2"; shift 2;;
+	-t|--trigger) triggerdat="$2"; shift 2;;
 	--)	shift; break;;
 	*)	fail "error parsing commandline: $*";;
 	esac
 done
 
-for f in $NEEDEDCMDS; do
+for f in $neededcmds; do
 	command -v "$f" >/dev/null || fail "Command '$f' not found"
 done
 
-[ "$SAMPLEFREQ" -eq 0 ] && fail "Invalid sample frequency"
+[ "$samplefreq" -eq 0 ] && fail "Invalid sample frequency"
 
-[ -d "$SYSFSDIR" ] || fail "Could not find logic analyzer root dir '$SYSFSDIR'. Module loaded?"
-[ -x "$SYSFSDIR" ] || fail "Could not access logic analyzer root dir '$SYSFSDIR'. Need root?"
-[ -z "$LASYSFSDIR" ] && LASYSFSDIR="$(find $SYSFSDIR -mindepth 1 -type d -print -quit)"
-[ -d "$LASYSFSDIR" ] || fail "LA directory '$LASYSFSDIR' not found!"
+[ -d "$sysfsdir" ] || fail "Could not find logic analyzer root dir '$sysfsdir'. Module loaded?"
+[ -x "$sysfsdir" ] || fail "Could not access logic analyzer root dir '$sysfsdir'. Need root?"
+[ -z "$lasysfsdir" ] && lasysfsdir="$(find $sysfsdir -mindepth 1 -type d -print -quit)"
+[ -d "$lasysfsdir" ] || fail "LA directory '$lasysfsdir' not found!"
 
-[ -n "$INITCPU" ] && init_cpu "$INITCPU"
-[ ! -d "$LACPUSETDIR" ] && echo "Auto-Isolating CPU1" && init_cpu 1
+[ -n "$initcpu" ] && init_cpu "$initcpu"
+[ ! -d "$lacpusetdir" ] && echo "Auto-Isolating CPU1" && init_cpu 1
 
-NDELAY=$((1000000000 / SAMPLEFREQ))
-NDELAY_ACQ=$(cat "$LASYSFSDIR"/delay_ns_acquisition)
-[ "$NDELAY_ACQ" -eq 0 ] && fail "Invalid acquisition delay received"
-NDELAY_USER=$((NDELAY - NDELAY_ACQ))
-MAXFREQ=$((1000000000 / NDELAY_ACQ))
+ndelay=$((1000000000 / samplefreq))
+ndelay_acq=$(cat "$lasysfsdir"/delay_ns_acquisition)
+[ "$ndelay_acq" -eq 0 ] && fail "Invalid acquisition delay received"
+ndelay_user=$((ndelay - ndelay_acq))
+maxfreq=$((1000000000 / ndelay_acq))
 
-[ $NDELAY_USER -lt 0 ] && NDELAY_USER=0 && SAMPLEFREQ=$MAXFREQ && echo "Capping sample_freq to $MAXFREQ"
-echo $NDELAY_USER > "$LASYSFSDIR"/delay_ns_user
+[ $ndelay_user -lt 0 ] && ndelay_user=0 && samplefreq=$maxfreq && echo "Capping sample_freq to $maxfreq"
+echo $ndelay_user > "$lasysfsdir"/delay_ns_user
 
-[ -n "$DURATION" ] && NUMSAMPLES=$((SAMPLEFREQ * DURATION / 1000000))
-echo $NUMSAMPLES > "$LASYSFSDIR"/buf_size
+[ -n "$duration" ] && numsamples=$((samplefreq * duration / 1000000))
+echo $numsamples > "$lasysfsdir"/buf_size
 
-if [ -n "$TRIGGERDAT" ]; then
-	parse_triggerdat "$TRIGGERDAT"
-	printf '%s' "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null || fail "Trigger data '$TRIGGERDAT' rejected"
+if [ -n "$triggerdat" ]; then
+	parse_triggerdat "$triggerdat"
+	printf '%s' "$trigger_bindat" > "$lasysfsdir"/trigger 2>/dev/null || fail "Trigger data '$triggerdat' rejected"
 fi
 
-WORKCPU=$(cat $LACPUSETDIR/effective_cpus)
-[ -z "$WORKCPU" ] && fail "No isolated CPU found"
-CPUMASK=$((1 << WORKCPU))
-do_capture $CPUMASK &
+workcpu=$(cat $lacpusetdir/effective_cpus)
+[ -z "$workcpu" ] && fail "No isolated CPU found"
+cpumask=$((1 << workcpu))
+do_capture $cpumask &
