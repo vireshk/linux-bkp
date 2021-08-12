@@ -59,6 +59,12 @@ The filename is the logic analyzer instance name plus a since-epoch timestamp.
 EOF
 }
 
+fail()
+{
+	echo "$1"
+	exit 1
+}
+
 set_newmask()
 {
 	for f in $(find "$1" -iname "$2"); do echo "$NEWMASK" > "$f" 2>/dev/null; done
@@ -101,7 +107,7 @@ parse_triggerdat()
 			chan=${elem%[lhfrLHFR]}
 			mode=${elem#$chan}
 			# Check if we could parse something and the channel number fits
-			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || { echo "Trigger syntax error: $elem" && exit 1; }
+			[ "$chan" != "$elem" ] && [ "$chan" -le $MAX_CHANS ] || fail "Trigger syntax error: $elem"
 			bit=$((1 << (chan - 1)))
 			mask=$((mask | bit))
 			case $mode in
@@ -153,25 +159,25 @@ while true; do
 	-s|--sample_freq) SAMPLEFREQ="$2"; shift 2;;
 	-t|--trigger) TRIGGERDAT="$2"; shift 2;;
 	--)	shift; break;;
-	*)	echo "error parsing commandline: $*"; exit 1;;
+	*)	fail "error parsing commandline: $*";;
 	esac
 done
 
 for f in $NEEDEDCMDS; do
-	command -v "$f" >/dev/null || { echo "Command '$f' not found"; exit 1; }
+	command -v "$f" >/dev/null || fail "Command '$f' not found"
 done
 
-[ "$SAMPLEFREQ" -eq 0 ] && echo "Invalid sample frequency" && exit 1
+[ "$SAMPLEFREQ" -eq 0 ] && fail "Invalid sample frequency"
 
 [ -z "$LASYSFSDIR" ] && LASYSFSDIR="$(find $SYSFSDIR -mindepth 1 -type d -print -quit)"
-[ ! -d "$LASYSFSDIR" ] && echo "LA directory '$LASYSFSDIR' not found!" && exit 1
+[ ! -d "$LASYSFSDIR" ] && fail "LA directory '$LASYSFSDIR' not found!"
 
 [ -n "$INITCPU" ] && init_cpu "$INITCPU"
 [ ! -d "$LACPUSETDIR" ] && echo "Auto-Isolating CPU1" && init_cpu 1
 
 NDELAY=$((1000000000 / SAMPLEFREQ))
 NDELAY_ACQ=$(cat "$LASYSFSDIR"/delay_ns_acquisition)
-[ "$NDELAY_ACQ" -eq 0 ] && echo "Invalid acquisition delay received" && exit 1
+[ "$NDELAY_ACQ" -eq 0 ] && fail "Invalid acquisition delay received"
 NDELAY_USER=$((NDELAY - NDELAY_ACQ))
 MAXFREQ=$((1000000000 / NDELAY_ACQ))
 
@@ -183,10 +189,10 @@ echo $NUMSAMPLES > "$LASYSFSDIR"/buf_size
 
 if [ -n "$TRIGGERDAT" ]; then
 	parse_triggerdat "$TRIGGERDAT"
-	printf '%s' "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null || { echo "Trigger data '$TRIGGERDAT' rejected" && exit 1; }
+	printf '%s' "$TRIGGER_BINDAT" > "$LASYSFSDIR"/trigger 2>/dev/null || fail "Trigger data '$TRIGGERDAT' rejected"
 fi
 
 CPU=$(cat $LACPUSETDIR/effective_cpus)
-[ -z "$CPU" ] && echo "No isolated CPU found" && exit 1
+[ -z "$CPU" ] && fail "No isolated CPU found"
 CPUMASK=$((1 << CPU))
 do_capture $CPUMASK &
