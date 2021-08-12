@@ -172,7 +172,7 @@ done
 [ -d "$SYSFSDIR" ] || fail "Could not find logic analyzer root dir '$SYSFSDIR'. Module loaded?"
 [ -x "$SYSFSDIR" ] || fail "Could not access logic analyzer root dir '$SYSFSDIR'. Need root?"
 [ -z "$LASYSFSDIR" ] && LASYSFSDIR="$(find $SYSFSDIR -mindepth 1 -type d -print -quit)"
-[ ! -d "$LASYSFSDIR" ] && fail "LA directory '$LASYSFSDIR' not found!"
+[ -d "$LASYSFSDIR" ] || fail "LA directory '$LASYSFSDIR' not found!"
 
 [ -n "$INITCPU" ] && init_cpu "$INITCPU"
 [ ! -d "$LACPUSETDIR" ] && echo "Auto-Isolating CPU1" && init_cpu 1
