@@ -9,10 +9,12 @@
 initcpu=
 samplefreq=1000000
 numsamples=250000
-lasysfsdir=
 cpusetdir='/dev/cpuset'
-lacpusetdir="$cpusetdir/gpio-sloppy-logic-analyzer"
-sysfsdir='/sys/kernel/debug/gpio-sloppy-logic-analyzer/'
+debugdir='/sys/kernel/debug'
+ladirname='gpio-sloppy-logic-analyzer'
+lacpusetdir="$cpusetdir/$ladirname"
+sysfsdir="$debugdir/$ladirname"
+lasysfsdir=
 outputdir="$PWD"
 triggerdat=
 trigger_bindat=
@@ -150,6 +152,7 @@ EOF
 	rm -rf "$srtmp"
 }
 
+#FIXME add kernel-debug-dir
 rep=$(getopt -a -l path:,init:,sample_freq:,num_samples:,duration-us:,trigger:,output-dir:,help -o i:s:n:d:t:o:h -- "$@") || exit 1
 eval set -- "$rep"
 while true; do
@@ -159,7 +162,7 @@ while true; do
 	-i|--init) initcpu="$2"; shift 2;;
 	-n|--num_samples) numsamples="$2"; shift 2;;
 	-o|--output-dir) outputdir="$2"; shift 2;;
-	-p|--path) lasysfsdir="$2"; shift 2;;
+	-p|--path) lasysfsdir="$sysfsdir/$2"; shift 2;;
 	-s|--sample_freq) samplefreq="$2"; shift 2;;
 	-t|--trigger) triggerdat="$2"; shift 2;;
 	--)	shift; break;;
@@ -176,7 +179,8 @@ done
 [ -d "$sysfsdir" ] || fail "Could not find logic analyzer root dir '$sysfsdir'. Module loaded?"
 [ -x "$sysfsdir" ] || fail "Could not access logic analyzer root dir '$sysfsdir'. Need root?"
 [ -z "$lasysfsdir" ] && lasysfsdir="$(find $sysfsdir -mindepth 1 -type d -print -quit)"
-[ -d "$lasysfsdir" ] || fail "LA directory '$lasysfsdir' not found!"
+[ -d "$lasysfsdir" ] || fail "Logic analyzer directory '$lasysfsdir' not found!"
+[ -d "$outputdir" ] || fail "Output directory '$outputdir' not found!"
 
 [ -n "$initcpu" ] && init_cpu "$initcpu"
 [ ! -d "$lacpusetdir" ] && echo "Auto-Isolating CPU1" && init_cpu 1
