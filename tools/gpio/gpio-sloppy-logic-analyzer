@@ -191,7 +191,7 @@ echo $numsamples > "$lasysfsdir"/buf_size
 
 if [ -n "$triggerdat" ]; then
 	parse_triggerdat "$triggerdat"
-	printf '%s' "$trigger_bindat" > "$lasysfsdir"/trigger 2>/dev/null || fail "Trigger data '$triggerdat' rejected"
+	printf "$trigger_bindat" > "$lasysfsdir"/trigger 2>/dev/null || fail "Trigger data '$triggerdat' rejected"
 fi
 
 workcpu=$(cat $lacpusetdir/effective_cpus)
