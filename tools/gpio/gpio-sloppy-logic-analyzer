@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 # Helper script for the Linux Kernel GPIO sloppy logic analyzer
 # 
 # Copyright (C) Wolfram Sang <wsa@sang-engineering.com>
@@ -44,7 +44,7 @@ Available options:
 			    first trigger has been met.
 			    Trigger data will only be used for the next capture and then be erased.
 Examples:
-Samples $numsamples at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
+Samples $numsamples values at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
 	'$0'
 Samples 50us at 2MHz waiting for falling edge on channel 2. CPU usage as above.
 	'$0 -d 50 -s 2000000 -t "2F"'
@@ -77,7 +77,11 @@ init_cpu()
 	mount | grep -q $cpusetdir || mount -t cpuset cpuset $cpusetdir
 	[ -d $lacpusetdir ] || mkdir $lacpusetdir
 
-	echo "$isol_cpu" > $lacpusetdir/cpus
+	cur_cpu="$(cat $lacpusetdir/cpus)"
+	[ "$cur_cpu" = "$isol_cpu" ] && return
+	[ -n "$cur_cpu" ] && fail "CPU$isol_cpu requested but CPU$cur_cpu already isolated"
+
+	echo "$isol_cpu" > $lacpusetdir/cpus || fail "Could not isolate CPU$isol_cpu. Does it exist?"
 	echo 1 > $lacpusetdir/cpu_exclusive
 	echo 0 > $lacpusetdir/mems
 
