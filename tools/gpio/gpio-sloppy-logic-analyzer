@@ -6,20 +6,18 @@
 #
 # TODO: support SI units in command line parameters?
 
-initcpu=
 samplefreq=1000000
 numsamples=250000
 cpusetdir='/dev/cpuset'
 debugdir='/sys/kernel/debug'
 ladirname='gpio-sloppy-logic-analyzer'
-lacpusetdir="$cpusetdir/$ladirname"
-sysfsdir="$debugdir/$ladirname"
-lasysfsdir=
 outputdir="$PWD"
-triggerdat=
-trigger_bindat=
 neededcmds='taskset zip'
 max_chans=8
+initcpu=
+lasysfsdir=
+triggerdat=
+trigger_bindat=
 
 print_help()
 {
@@ -175,6 +173,9 @@ done
 for f in $neededcmds; do
 	command -v "$f" >/dev/null || fail "Command '$f' not found"
 done
+
+lacpusetdir="$cpusetdir/$ladirname"
+sysfsdir="$debugdir/$ladirname"
 
 [ "$samplefreq" -eq 0 ] && fail "Invalid sample frequency"
 
