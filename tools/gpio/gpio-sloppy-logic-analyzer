@@ -1,6 +1,6 @@
 #!/bin/sh -e
 # Helper script for the Linux Kernel GPIO sloppy logic analyzer
-# 
+#
 # Copyright (C) Wolfram Sang <wsa@sang-engineering.com>
 # Copyright (C) Renesas Electronics Corporation
 #
@@ -26,15 +26,16 @@ print_help()
 	cat <<EOF
 $0 - helper script for the Linux Kernel Sloppy GPIO Logic Analyzer
 Available options:
+	-c|--cpu <n>: which CPU to isolate for sampling. Only needed once. Default <1>.
+		      Remember that a more powerful CPU gives you higher sample speeds.
+		      Also CPU0 is not recommended as it usually does extra bookkeeping.
 	-d|--duration-us <n>: number of microseconds to sample. Overrides -n, no default value.
 	-h|--help: print this help
-	-i|--init <n>: which CPU to isolate for sampling. Only needed once. Default <1>.
-		       Remember that a more powerful CPU gives you higher sample speeds.
-		       Also CPU0 is not recommended as it usually does extra bookkeeping.
+	-i|--instance <str>: name of the logic analyzer in case you have multiple instances. Default
+			     to first instance in '$sysfsdir'.
+	-k|--kernel-debug-dir: path to the kernel debugfs mountpoint. Default: <$debugdir>
 	-n|--num_samples <n>: number of samples to acquire. Default <$numsamples>
 	-o|--output-dir <str>: directory to put the result files. Default: current dir
-	-p|--path <str>: path to Logic Analyzer dir in case you have multiple instances.
-			 Default to first instance found.
 	-s|--sample_freq <n>: desired sample frequency. Might be capped if too large. Default: 1MHz.
 	-t|--trigger <str>: pattern to use as trigger. <str> consists of two-char pairs. First
 			    char is channel number starting at "1". Second char is trigger level:
@@ -46,9 +47,10 @@ Available options:
 			    first trigger has been met.
 			    Trigger data will only be used for the next capture and then be erased.
 Examples:
-Samples $numsamples values at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed
+Samples $numsamples values at 1MHz with an already prepared CPU or automatically prepares CPU1 if needed,
+use the first logic analyzer instance found:
 	'$0'
-Samples 50us at 2MHz waiting for falling edge on channel 2. CPU usage as above.
+Samples 50us at 2MHz waiting for falling edge on channel 2. CPU and instance as above:
 	'$0 -d 50 -s 2000000 -t "2F"'
 
 Note that the process exits after checking all parameters but a sub-process still works in
@@ -152,17 +154,17 @@ EOF
 	rm -rf "$srtmp"
 }
 
-#FIXME add kernel-debug-dir
-rep=$(getopt -a -l path:,init:,sample_freq:,num_samples:,duration-us:,trigger:,output-dir:,help -o i:s:n:d:t:o:h -- "$@") || exit 1
+rep=$(getopt -a -l cpu:,duration-us:,help,instance:,kernel-debug-dir:,num_samples:,output-dir:,sample_freq:,trigger: -o c:d:hi:k:n:o:s:t: -- "$@") || exit 1
 eval set -- "$rep"
 while true; do
 	case "$1" in
+	-c|--cpu) initcpu="$2"; shift 2;;
 	-d|--duration-us) duration="$2"; shift 2;;
 	-h|--help) print_help; exit 0;;
-	-i|--init) initcpu="$2"; shift 2;;
+	-i|--instance) lasysfsdir="$sysfsdir/$2"; shift 2;;
+	-k|--kernel-debug-dir) debugdir="$2"; shift 2;;
 	-n|--num_samples) numsamples="$2"; shift 2;;
 	-o|--output-dir) outputdir="$2"; shift 2;;
-	-p|--path) lasysfsdir="$sysfsdir/$2"; shift 2;;
 	-s|--sample_freq) samplefreq="$2"; shift 2;;
 	-t|--trigger) triggerdat="$2"; shift 2;;
 	--)	shift; break;;
