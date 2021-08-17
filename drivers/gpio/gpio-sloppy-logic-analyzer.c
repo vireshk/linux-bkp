@@ -34,9 +34,6 @@
 #define GPIO_LA_MAX_PROBES 8
 #define GPIO_LA_NUM_TESTS 1024
 
-#define gpio_la_get_array(d, sptr) \
-	gpiod_get_array_value((d)->ndescs, (d)->desc, (d)->info, sptr)
-
 struct gpio_la_poll_priv {
 	struct mutex lock;
 	u32 buf_idx;
@@ -53,6 +50,17 @@ struct gpio_la_poll_priv {
 };
 
 static struct dentry *gpio_la_poll_debug_dir;
+
+static __always_inline int gpio_la_get_array(struct gpio_descs *d, unsigned long *sptr)
+{
+	int ret;
+
+	ret = gpiod_get_array_value(d->ndescs, d->desc, d->info, sptr);
+	if (ret == 0 && fatal_signal_pending(current))
+		ret = -EINTR;
+
+	return ret;
+}
 
 static int fops_capture_set(void *data, u64 val)
 {

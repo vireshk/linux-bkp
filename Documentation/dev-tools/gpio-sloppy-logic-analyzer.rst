@@ -58,9 +58,8 @@ altogether::
 
 Note that the process will return you back to the prompt but a sub-process is
 still sampling in the background. Unless this has finished, you will not find a
-result file in the current or specified directory. Please also note that
-currently this sub-process is not killable! For the above example, we will then
-need to trigger I2C communication::
+result file in the current or specified directory. For the above example, we
+will then need to trigger I2C communication::
 
     i2cdetect -y -r <your bus number>
 

@@ -52,8 +52,7 @@ Samples 50us at 2MHz waiting for falling edge on channel 2. CPU and instance as 
 	'$0 -d 50 -s 2000000 -t "2F"'
 
 Note that the process exits after checking all parameters but a sub-process still works in
-the background. The result is only available once the sub-process finishes. As the time of
-writing, the sub-process is not killable, so be extra careful that your triggers work.
+the background. The result is only available once the sub-process finishes.
 
 Result is a .sr file to be consumed with PulseView from the free Sigrok project. It is
 a zip file which also contains the binary sample data which may be consumed by others.
