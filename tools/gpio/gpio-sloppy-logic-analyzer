@@ -152,6 +152,7 @@ EOF
 	zipname="$outputdir/${lasysfsdir##*/}-$(date +%s).sr"
 	zip -jq "$zipname" "$srtmp"/*
 	rm -rf "$srtmp"
+	echo "Logic analyzer done. Saved '$zipname'"
 }
 
 rep=$(getopt -a -l cpu:,duration-us:,help,instance:,kernel-debug-dir:,num_samples:,output-dir:,sample_freq:,trigger: -o c:d:hi:k:n:o:s:t: -- "$@") || exit 1
@@ -204,4 +205,6 @@ fi
 workcpu=$(cat "$lacpusetdir"/effective_cpus)
 [ -z "$workcpu" ] && fail "No isolated CPU found"
 cpumask=$(printf '%x' $((1 << workcpu)))
+instance=${lasysfsdir##*/}
+echo "Setting up '$instance': $numsamples samples at ${samplefreq}Hz with ${triggerdat:-no} trigger using CPU$workcpu"
 do_capture "$cpumask" &
