@@ -39,6 +39,7 @@ struct gpio_la_poll_priv {
 	u32 buf_idx;
 	struct gpio_descs *descs;
 	unsigned long delay_ns;
+	unsigned long acq_delay;
 	struct debugfs_blob_wrapper blob;
 	struct dentry *debug_dir;
 	struct dentry *blob_dent;
@@ -65,7 +66,7 @@ static int fops_capture_set(void *data, u64 val)
 {
 	struct gpio_la_poll_priv *priv = data;
 	u8 *la_buf = priv->blob.data;
-	unsigned long state, delay, acq_delay;
+	unsigned long state, delay;
 	ktime_t start_time;
 	int i, ret;
 
@@ -97,13 +98,13 @@ static int fops_capture_set(void *data, u64 val)
 			goto gpio_err;
 	}
 
-	acq_delay = ktime_sub(ktime_get(), start_time) / GPIO_LA_NUM_TESTS;
-	if (priv->delay_ns < acq_delay) {
+	priv->acq_delay = ktime_sub(ktime_get(), start_time) / GPIO_LA_NUM_TESTS;
+	if (priv->delay_ns < priv->acq_delay) {
 		ret = -ERANGE;
 		goto gpio_err;
 	}
 
-	delay = priv->delay_ns - acq_delay;
+	delay = priv->delay_ns - priv->acq_delay;
 
 	/* Wait for triggers */
 	for (i = 0; i < priv->trig_len; i+= 2) {
@@ -279,6 +280,7 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 	priv->debug_dir = debugfs_create_dir(dev_name(dev), gpio_la_poll_debug_dir);
 	debugfs_create_blob("meta_data", 0400, priv->debug_dir, &priv->meta);
 	debugfs_create_ulong("delay_ns", 0600, priv->debug_dir, &priv->delay_ns);
+	debugfs_create_ulong("delay_ns_acquisition", 0400, priv->debug_dir, &priv->acq_delay);
 	debugfs_create_file_unsafe("buf_size", 0600, priv->debug_dir, priv, &fops_buf_size);
 	debugfs_create_file_unsafe("capture", 0200, priv->debug_dir, priv, &fops_capture);
 	debugfs_create_file_unsafe("trigger", 0200, priv->debug_dir, priv, &fops_trigger);

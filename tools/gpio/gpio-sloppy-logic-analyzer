@@ -152,7 +152,8 @@ EOF
 	zipname="$outputdir/${lasysfsdir##*/}-$(date +%s).sr"
 	zip -jq "$zipname" "$srtmp"/*
 	rm -rf "$srtmp"
-	echo "Logic analyzer done. Saved '$zipname'"
+	maxfreq=$(( 1000000000 / $(cat "$lasysfsdir"/delay_ns_acquisition) ))
+	echo "Logic analyzer done, max sample frequency ${maxfreq}Hz. Saved '$zipname'"
 }
 
 rep=$(getopt -a -l cpu:,duration-us:,help,instance:,kernel-debug-dir:,num_samples:,output-dir:,sample_freq:,trigger: -o c:d:hi:k:n:o:s:t: -- "$@") || exit 1
