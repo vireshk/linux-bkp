@@ -132,7 +132,7 @@ parse_triggerdat()
 
 do_capture()
 {
-	taskset "$1" echo 1 > "$lasysfsdir"/capture || fail "Capture error"
+	taskset "$1" echo 1 > "$lasysfsdir"/capture || fail "Capture error! Check kernel log"
 
 	srtmp=$(mktemp -d)
 	echo 1 > "$srtmp"/version
@@ -191,13 +191,7 @@ sysfsdir="$debugdir/$ladirname"
 [ ! -d "$lacpusetdir" ] && echo "Auto-Isolating CPU1" && init_cpu 1
 
 ndelay=$((1000000000 / samplefreq))
-ndelay_acq=$(cat "$lasysfsdir"/delay_ns_acquisition)
-[ "$ndelay_acq" -eq 0 ] && fail "Invalid acquisition delay received"
-ndelay_user=$((ndelay - ndelay_acq))
-maxfreq=$((1000000000 / ndelay_acq))
-
-[ $ndelay_user -lt 0 ] && ndelay_user=0 && samplefreq=$maxfreq && echo "Capping sample_freq to $maxfreq"
-echo $ndelay_user > "$lasysfsdir"/delay_ns_user
+echo "$ndelay" > "$lasysfsdir"/delay_ns
 
 [ -n "$duration" ] && numsamples=$((samplefreq * duration / 1000000))
 echo $numsamples > "$lasysfsdir"/buf_size

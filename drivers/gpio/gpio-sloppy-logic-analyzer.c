@@ -37,13 +37,12 @@
 struct gpio_la_poll_priv {
 	struct mutex lock;
 	u32 buf_idx;
-	unsigned long ndelay;
 	struct gpio_descs *descs;
+	unsigned long delay_ns;
 	struct debugfs_blob_wrapper blob;
 	struct dentry *debug_dir;
 	struct dentry *blob_dent;
 	struct debugfs_blob_wrapper meta;
-	unsigned long gpio_acq_delay;
 	struct device *dev;
 	unsigned int trig_len;
 	u8 *trig_data;
@@ -66,7 +65,8 @@ static int fops_capture_set(void *data, u64 val)
 {
 	struct gpio_la_poll_priv *priv = data;
 	u8 *la_buf = priv->blob.data;
-	unsigned long state;
+	unsigned long state, delay, acq_delay;
+	ktime_t start_time;
 	int i, ret;
 
 	if (!val)
@@ -74,6 +74,9 @@ static int fops_capture_set(void *data, u64 val)
 
 	if (!la_buf)
 		return -ENOMEM;
+
+	if (!priv->delay_ns)
+		return -EINVAL;
 
 	mutex_lock(&priv->lock);
 	if (priv->blob_dent) {
@@ -86,13 +89,30 @@ static int fops_capture_set(void *data, u64 val)
 	local_irq_disable();
 	preempt_disable_notrace();
 
+	/* Measure delay of reading GPIOs */
+	start_time = ktime_get();
+	for (i = 0; i < GPIO_LA_NUM_TESTS; i++) {
+		ret = gpio_la_get_array(priv->descs, &state);
+		if (ret)
+			goto gpio_err;
+	}
+
+	acq_delay = ktime_sub(ktime_get(), start_time) / GPIO_LA_NUM_TESTS;
+	if (priv->delay_ns < acq_delay) {
+		ret = -ERANGE;
+		goto gpio_err;
+	}
+
+	delay = priv->delay_ns - acq_delay;
+
+	/* Wait for triggers */
 	for (i = 0; i < priv->trig_len; i+= 2) {
 		do {
 			ret = gpio_la_get_array(priv->descs, &state);
 			if (ret)
 				goto gpio_err;
 
-			ndelay(priv->ndelay);
+			ndelay(delay);
 		} while ((state & priv->trig_data[i]) != priv->trig_data[i + 1]);
 	}
 
@@ -100,13 +120,14 @@ static int fops_capture_set(void *data, u64 val)
 	if (priv->trig_len)
 		la_buf[priv->buf_idx++] = state;
 
+	/* Sample */
 	while (priv->buf_idx < priv->blob.size) {
 		ret = gpio_la_get_array(priv->descs, &state);
 		if (ret)
 			goto gpio_err;
 
 		la_buf[priv->buf_idx++] = state;
-		ndelay(priv->ndelay);
+		ndelay(delay);
 	}
 gpio_err:
 	preempt_enable_notrace();
@@ -121,7 +142,7 @@ gpio_err:
 	priv->blob_dent = debugfs_create_blob("sample_data", 0400, priv->debug_dir, &priv->blob);
 	mutex_unlock(&priv->lock);
 
-	return 0;
+	return ret;
 }
 DEFINE_DEBUGFS_ATTRIBUTE(fops_capture, NULL, fops_capture_set, "%llu\n");
 
@@ -198,8 +219,6 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 {
 	struct gpio_la_poll_priv *priv;
 	struct device *dev = &pdev->dev;
-	unsigned long state;
-	ktime_t start_time, end_time;
 	const char *gpio_names[GPIO_LA_MAX_PROBES];
 	char *meta = NULL;
 	unsigned int meta_len = 0;
@@ -219,7 +238,7 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 
 	/* artificial limit to keep 1 byte per sample for now */
 	if (priv->descs->ndescs > GPIO_LA_MAX_PROBES)
-		return -ERANGE;
+		return -EFBIG;
 
 	ret = device_property_read_string_array(dev, "probe-names", gpio_names,
 						priv->descs->ndescs);
@@ -255,28 +274,11 @@ static int gpio_la_poll_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, priv);
 	priv->dev = dev;
 
-	/* Measure delay of reading GPIOs */
-	local_irq_disable();
-	preempt_disable_notrace();
-	start_time = ktime_get();
-	for (i = 0, ret = 0; i < GPIO_LA_NUM_TESTS && ret == 0; i++)
-		ret = gpio_la_get_array(priv->descs, &state);
-	end_time = ktime_get();
-	preempt_enable_notrace();
-	local_irq_enable();
-	if (ret) {
-		dev_err(dev, "couldn't read GPIOs: %d\n", ret);
-		return ret;
-	}
-
-	priv->gpio_acq_delay = ktime_sub(end_time, start_time) / GPIO_LA_NUM_TESTS;
-
 	priv->meta.data = meta;
 	priv->meta.size = meta_len;
 	priv->debug_dir = debugfs_create_dir(dev_name(dev), gpio_la_poll_debug_dir);
 	debugfs_create_blob("meta_data", 0400, priv->debug_dir, &priv->meta);
-	debugfs_create_ulong("delay_ns_acquisition", 0400, priv->debug_dir, &priv->gpio_acq_delay);
-	debugfs_create_ulong("delay_ns_user", 0600, priv->debug_dir, &priv->ndelay);
+	debugfs_create_ulong("delay_ns", 0600, priv->debug_dir, &priv->delay_ns);
 	debugfs_create_file_unsafe("buf_size", 0600, priv->debug_dir, priv, &fops_buf_size);
 	debugfs_create_file_unsafe("capture", 0200, priv->debug_dir, priv, &fops_capture);
 	debugfs_create_file_unsafe("trigger", 0200, priv->debug_dir, priv, &fops_trigger);
