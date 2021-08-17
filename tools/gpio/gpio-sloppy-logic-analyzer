@@ -101,6 +101,8 @@ init_cpu()
 	done 2>/dev/null >/dev/null
 
 	echo 1 > /sys/module/rcupdate/parameters/rcu_cpu_stall_suppress
+
+	echo performance > "/sys/devices/system/cpu/cpu$isol_cpu/cpufreq/scaling_governor"
 }
 
 parse_triggerdat()
