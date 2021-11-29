@@ -137,6 +137,7 @@ static void virtio_gpio_free(struct gpio_chip *gc, unsigned int gpio)
 {
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 
+	pr_info("%s: %d: %d\n", __func__, __LINE__, gpio);
 	virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_SET_DIRECTION, gpio,
 			VIRTIO_GPIO_DIRECTION_NONE, NULL);
 }
@@ -147,6 +148,7 @@ static int virtio_gpio_get_direction(struct gpio_chip *gc, unsigned int gpio)
 	u8 direction;
 	int ret;
 
+	pr_info("%s: %d: %d\n", __func__, __LINE__, gpio);
 	ret = virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_GET_DIRECTION, gpio, 0,
 			      &direction);
 	if (ret)
@@ -166,6 +168,7 @@ static int virtio_gpio_direction_input(struct gpio_chip *gc, unsigned int gpio)
 {
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 
+	pr_info("%s: %d: %d\n", __func__, __LINE__, gpio);
 	return virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_SET_DIRECTION, gpio,
 			       VIRTIO_GPIO_DIRECTION_IN, NULL);
 }
@@ -176,6 +179,7 @@ static int virtio_gpio_direction_output(struct gpio_chip *gc, unsigned int gpio,
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 	int ret;
 
+	pr_info("%s: %d: %d: %d\n", __func__, __LINE__, gpio, value);
 	ret = virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_SET_VALUE, gpio, value, NULL);
 	if (ret)
 		return ret;
@@ -190,6 +194,7 @@ static int virtio_gpio_get(struct gpio_chip *gc, unsigned int gpio)
 	u8 value;
 	int ret;
 
+	pr_info("%s: %d: %d\n", __func__, __LINE__, gpio);
 	ret = virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_GET_VALUE, gpio, 0, &value);
 	return ret ? ret : value;
 }
@@ -198,6 +203,7 @@ static void virtio_gpio_set(struct gpio_chip *gc, unsigned int gpio, int value)
 {
 	struct virtio_gpio *vgpio = gpiochip_get_data(gc);
 
+	pr_info("%s: %d: %d: %d\n", __func__, __LINE__, gpio, value);
 	virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_SET_VALUE, gpio, value, NULL);
 }
 
@@ -242,6 +248,7 @@ static void virtio_gpio_irq_enable(struct irq_data *d)
 	raw_spin_unlock(&vgpio->eventq_lock);
 
 	irq_line->update_pending = true;
+	pr_info("%s: %d\n", __func__, __LINE__);
 }
 
 static void virtio_gpio_irq_disable(struct irq_data *d)
@@ -257,6 +264,7 @@ static void virtio_gpio_irq_disable(struct irq_data *d)
 	raw_spin_unlock(&vgpio->eventq_lock);
 
 	irq_line->update_pending = true;
+	pr_info("%s: %d\n", __func__, __LINE__);
 }
 
 static void virtio_gpio_irq_mask(struct irq_data *d)
@@ -268,6 +276,7 @@ static void virtio_gpio_irq_mask(struct irq_data *d)
 	raw_spin_lock(&vgpio->eventq_lock);
 	irq_line->masked = true;
 	raw_spin_unlock(&vgpio->eventq_lock);
+	pr_info("%s: %d\n", __func__, __LINE__);
 }
 
 static void virtio_gpio_irq_unmask(struct irq_data *d)
@@ -279,6 +288,7 @@ static void virtio_gpio_irq_unmask(struct irq_data *d)
 	raw_spin_lock(&vgpio->eventq_lock);
 	irq_line->masked = false;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	/* Queue the buffer unconditionally on unmask */
 	virtio_gpio_irq_prepare(vgpio, d->hwirq);
 	raw_spin_unlock(&vgpio->eventq_lock);
@@ -313,6 +323,7 @@ static int virtio_gpio_irq_set_type(struct irq_data *d, unsigned int type)
 
 	irq_line->type = type;
 	irq_line->update_pending = true;
+	pr_info("%s: %d: %u\n", __func__, __LINE__, type);
 
 	return 0;
 }
@@ -333,6 +344,7 @@ static void virtio_gpio_irq_bus_sync_unlock(struct irq_data *d)
 	u8 type = irq_line->disabled ? VIRTIO_GPIO_IRQ_TYPE_NONE : irq_line->type;
 	unsigned long flags;
 
+	pr_info("%s: %d\n", __func__, __LINE__);
 	if (irq_line->update_pending) {
 		irq_line->update_pending = false;
 		virtio_gpio_req(vgpio, VIRTIO_GPIO_MSG_IRQ_TYPE, d->hwirq, type,
