@@ -263,6 +263,48 @@ free_cpumask:
 	return ret;
 }
 
+enum type {
+	floor,
+	ceil,
+	exact
+};
+
+static struct test {
+	enum type type;
+	unsigned long target;
+	unsigned long expected;
+} tests[] = {
+	{ exact, 208000000,  208000000, },
+	{ exact, 432000000,  432000000, },
+	{ exact, 729000000,  729000000, },
+	{ exact, 960000000,  960000000, },
+	{ exact, 1200000000, 1200000000, },
+
+	{ ceil, 208000000 - 1,  208000000, },
+	{ ceil, 432000000 - 1,  432000000, },
+	{ ceil, 729000000 - 1,  729000000, },
+	{ ceil, 960000000 - 1,  960000000, },
+	{ ceil, 1200000000 - 1, 1200000000, },
+
+	{ ceil, 208000000 + 1,  432000000, },
+	{ ceil, 432000000 + 1,  729000000, },
+	{ ceil, 729000000 + 1,  960000000, },
+	{ ceil, 960000000 + 1,  1200000000, },
+	{ ceil, 1200000000 + 1, 1200000000, },
+
+	{ floor, 208000000 - 1,  208000000, },
+	{ floor, 432000000 - 1,  208000000, },
+	{ floor, 729000000 - 1,  432000000, },
+	{ floor, 960000000 - 1,  729000000, },
+	{ floor, 1200000000 - 1, 960000000, },
+
+	{ floor, 208000000 + 1,  208000000, },
+	{ floor, 432000000 + 1,  432000000, },
+	{ floor, 729000000 + 1,  729000000, },
+	{ floor, 960000000 + 1,  960000000, },
+	{ floor, 1200000000 + 1, 1200000000, },
+};
+
 static void dt_cpufreq_release(void)
 {
 	struct private_data *priv, *tmp;
@@ -281,6 +323,7 @@ static int dt_cpufreq_probe(struct platform_device *pdev)
 {
 	struct cpufreq_dt_platform_data *data = dev_get_platdata(&pdev->dev);
 	int ret, cpu;
+	struct device *cpu_dev;
 
 	/* Request resources early so we can return in case of -EPROBE_DEFER */
 	for_each_present_cpu(cpu) {
@@ -306,6 +349,43 @@ static int dt_cpufreq_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "failed register driver: %d\n", ret);
 		goto err;
+	}
+
+	pr_info("%s: %d\n", __func__, __LINE__);
+	cpu_dev = get_cpu_device(0);
+	WARN_ON(!cpu_dev);
+
+	for (ret = 0; ret < ARRAY_SIZE(tests); ret++) {
+		struct dev_pm_opp *opp;
+
+		switch (tests[ret].type) {
+		case exact:
+			opp = dev_pm_opp_find_freq_exact(cpu_dev, tests[ret].target, true);
+			break;
+		case ceil:
+			opp = dev_pm_opp_find_freq_ceil(cpu_dev, &tests[ret].target);
+			break;
+		case floor:
+			opp = dev_pm_opp_find_freq_floor(cpu_dev, &tests[ret].target);
+			break;
+		default:
+			WARN_ON(1);
+		}
+
+		if (IS_ERR(opp)) {
+			pr_info("%s: %d: OPP error %d\n", __func__, __LINE__, ret);
+			continue;
+		}
+
+		if (dev_pm_opp_get_freq(opp) != tests[ret].expected) {
+			pr_info("%s: %d: ERROR Frequency mismatch %d %lu %lu\n", __func__, __LINE__, ret,
+					dev_pm_opp_get_freq(opp), tests[ret].expected);
+		} else {
+			pr_info("%s: %d: Frequency matched %d %lu %lu\n", __func__, __LINE__, ret,
+					dev_pm_opp_get_freq(opp), tests[ret].expected);
+		}
+
+		dev_pm_opp_put(opp);
 	}
 
 	return 0;
