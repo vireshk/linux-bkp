@@ -18,7 +18,9 @@
 
 #include "power.h"
 
-static struct class *wakeup_class;
+static const struct class wakeup_class = {
+	.name = "wakeup",
+};
 
 #define wakeup_attr(_name)						\
 static ssize_t _name##_show(struct device *dev,				\
@@ -147,7 +149,7 @@ static struct device *wakeup_source_device_create(struct device *parent,
 
 	device_initialize(dev);
 	dev->devt = MKDEV(0, 0);
-	dev->class = wakeup_class;
+	dev->class = &wakeup_class;
 	dev->parent = parent;
 	dev->groups = wakeup_source_groups;
 	dev->release = device_create_release;
@@ -210,8 +212,10 @@ void wakeup_source_sysfs_remove(struct wakeup_source *ws)
 
 static int __init wakeup_sources_sysfs_init(void)
 {
-	wakeup_class = class_create("wakeup");
+	int err;
 
-	return PTR_ERR_OR_ZERO(wakeup_class);
+	err = class_register(&wakeup_class);
+
+	return err;
 }
 postcore_initcall(wakeup_sources_sysfs_init);
