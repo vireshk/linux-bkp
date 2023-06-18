@@ -208,8 +208,6 @@ static const struct file_operations gnss_fops = {
 	.poll		= gnss_poll,
 };
 
-static struct class *gnss_class;
-
 static void gnss_device_release(struct device *dev)
 {
 	struct gnss_device *gdev = to_gnss_device(dev);
@@ -219,6 +217,59 @@ static void gnss_device_release(struct device *dev)
 	ida_free(&gnss_minors, gdev->id);
 	kfree(gdev);
 }
+
+static const char * const gnss_type_names[GNSS_TYPE_COUNT] = {
+	[GNSS_TYPE_NMEA]	= "NMEA",
+	[GNSS_TYPE_SIRF]	= "SiRF",
+	[GNSS_TYPE_UBX]		= "UBX",
+	[GNSS_TYPE_MTK]		= "MTK",
+};
+
+static const char *gnss_type_name(const struct gnss_device *gdev)
+{
+	const char *name = NULL;
+
+	if (gdev->type < GNSS_TYPE_COUNT)
+		name = gnss_type_names[gdev->type];
+
+	if (!name)
+		dev_WARN(&gdev->dev, "type name not defined\n");
+
+	return name;
+}
+
+static ssize_t type_show(struct device *dev, struct device_attribute *attr,
+				char *buf)
+{
+	struct gnss_device *gdev = to_gnss_device(dev);
+
+	return sprintf(buf, "%s\n", gnss_type_name(gdev));
+}
+static DEVICE_ATTR_RO(type);
+
+static struct attribute *gnss_attrs[] = {
+	&dev_attr_type.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(gnss);
+
+static int gnss_uevent(const struct device *dev, struct kobj_uevent_env *env)
+{
+	const struct gnss_device *gdev = to_gnss_device(dev);
+	int ret;
+
+	ret = add_uevent_var(env, "GNSS_TYPE=%s", gnss_type_name(gdev));
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static const struct class gnss_class = {
+	.name = "gnss",
+	.dev_groups = gnss_groups,
+	.dev_uevent = gnss_uevent,
+};
 
 struct gnss_device *gnss_allocate_device(struct device *parent)
 {
@@ -242,7 +293,7 @@ struct gnss_device *gnss_allocate_device(struct device *parent)
 	dev = &gdev->dev;
 	device_initialize(dev);
 	dev->devt = gnss_first + id;
-	dev->class = gnss_class;
+	dev->class = &gnss_class;
 	dev->parent = parent;
 	dev->release = gnss_device_release;
 	dev_set_drvdata(dev, gdev);
@@ -329,53 +380,6 @@ int gnss_insert_raw(struct gnss_device *gdev, const unsigned char *buf,
 }
 EXPORT_SYMBOL_GPL(gnss_insert_raw);
 
-static const char * const gnss_type_names[GNSS_TYPE_COUNT] = {
-	[GNSS_TYPE_NMEA]	= "NMEA",
-	[GNSS_TYPE_SIRF]	= "SiRF",
-	[GNSS_TYPE_UBX]		= "UBX",
-	[GNSS_TYPE_MTK]		= "MTK",
-};
-
-static const char *gnss_type_name(const struct gnss_device *gdev)
-{
-	const char *name = NULL;
-
-	if (gdev->type < GNSS_TYPE_COUNT)
-		name = gnss_type_names[gdev->type];
-
-	if (!name)
-		dev_WARN(&gdev->dev, "type name not defined\n");
-
-	return name;
-}
-
-static ssize_t type_show(struct device *dev, struct device_attribute *attr,
-				char *buf)
-{
-	struct gnss_device *gdev = to_gnss_device(dev);
-
-	return sprintf(buf, "%s\n", gnss_type_name(gdev));
-}
-static DEVICE_ATTR_RO(type);
-
-static struct attribute *gnss_attrs[] = {
-	&dev_attr_type.attr,
-	NULL,
-};
-ATTRIBUTE_GROUPS(gnss);
-
-static int gnss_uevent(const struct device *dev, struct kobj_uevent_env *env)
-{
-	const struct gnss_device *gdev = to_gnss_device(dev);
-	int ret;
-
-	ret = add_uevent_var(env, "GNSS_TYPE=%s", gnss_type_name(gdev));
-	if (ret)
-		return ret;
-
-	return 0;
-}
-
 static int __init gnss_module_init(void)
 {
 	int ret;
@@ -386,15 +390,11 @@ static int __init gnss_module_init(void)
 		return ret;
 	}
 
-	gnss_class = class_create("gnss");
-	if (IS_ERR(gnss_class)) {
-		ret = PTR_ERR(gnss_class);
+	ret = class_register(&gnss_class);
+	if (ret) {
 		pr_err("failed to create class: %d\n", ret);
 		goto err_unregister_chrdev;
 	}
-
-	gnss_class->dev_groups = gnss_groups;
-	gnss_class->dev_uevent = gnss_uevent;
 
 	pr_info("GNSS driver registered with major %d\n", MAJOR(gnss_first));
 
@@ -409,7 +409,7 @@ module_init(gnss_module_init);
 
 static void __exit gnss_module_exit(void)
 {
-	class_destroy(gnss_class);
+	class_unregister(&gnss_class);
 	unregister_chrdev_region(gnss_first, GNSS_MINORS);
 	ida_destroy(&gnss_minors);
 }
