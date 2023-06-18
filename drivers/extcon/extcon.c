@@ -237,8 +237,6 @@ struct extcon_cable {
 	DECLARE_BITMAP(disp_bits, EXTCON_PROP_DISP_CNT);
 };
 
-static struct class *extcon_class;
-
 static DEFINE_IDA(extcon_dev_ids);
 static LIST_HEAD(extcon_dev_list);
 static DEFINE_MUTEX(extcon_dev_list_lock);
@@ -1020,15 +1018,20 @@ static struct attribute *extcon_attrs[] = {
 };
 ATTRIBUTE_GROUPS(extcon);
 
+static const struct class extcon_class = {
+	.name = "extcon",
+	.dev_groups = extcon_groups,
+};
+
 static int create_extcon_class(void)
 {
-	if (extcon_class)
-		return 0;
+	int err;
 
-	extcon_class = class_create("extcon");
-	if (IS_ERR(extcon_class))
-		return PTR_ERR(extcon_class);
-	extcon_class->dev_groups = extcon_groups;
+	if (!class_is_registered(&extcon_class)) {
+		err = class_register(&extcon_class);
+		if (err)
+			return err;
+	}
 
 	return 0;
 }
@@ -1264,7 +1267,7 @@ int extcon_dev_register(struct extcon_dev *edev)
 		return -EINVAL;
 	}
 
-	edev->dev.class = extcon_class;
+	edev->dev.class = &extcon_class;
 	edev->dev.release = extcon_dev_release;
 
 	edev->name = dev_name(edev->dev.parent);
@@ -1483,7 +1486,7 @@ module_init(extcon_class_init);
 
 static void __exit extcon_class_exit(void)
 {
-	class_destroy(extcon_class);
+	class_unregister(&extcon_class);
 }
 module_exit(extcon_class_exit);
 
