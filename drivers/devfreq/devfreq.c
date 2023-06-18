@@ -36,7 +36,6 @@
 #define IS_SUPPORTED_FLAG(f, name) ((f & DEVFREQ_GOV_FLAG_##name) ? true : false)
 #define IS_SUPPORTED_ATTR(f, name) ((f & DEVFREQ_GOV_ATTR_##name) ? true : false)
 
-static struct class *devfreq_class;
 static struct dentry *devfreq_debugfs;
 
 /*
@@ -792,200 +791,6 @@ static void create_sysfs_files(struct devfreq *devfreq,
 				const struct devfreq_governor *gov);
 static void remove_sysfs_files(struct devfreq *devfreq,
 				const struct devfreq_governor *gov);
-
-/**
- * devfreq_add_device() - Add devfreq feature to the device
- * @dev:	the device to add devfreq feature.
- * @profile:	device-specific profile to run devfreq.
- * @governor_name:	name of the policy to choose frequency.
- * @data:	devfreq driver pass to governors, governor should not change it.
- */
-struct devfreq *devfreq_add_device(struct device *dev,
-				   struct devfreq_dev_profile *profile,
-				   const char *governor_name,
-				   void *data)
-{
-	struct devfreq *devfreq;
-	struct devfreq_governor *governor;
-	unsigned long min_freq, max_freq;
-	int err = 0;
-
-	if (!dev || !profile || !governor_name) {
-		dev_err(dev, "%s: Invalid parameters.\n", __func__);
-		return ERR_PTR(-EINVAL);
-	}
-
-	mutex_lock(&devfreq_list_lock);
-	devfreq = find_device_devfreq(dev);
-	mutex_unlock(&devfreq_list_lock);
-	if (!IS_ERR(devfreq)) {
-		dev_err(dev, "%s: devfreq device already exists!\n",
-			__func__);
-		err = -EINVAL;
-		goto err_out;
-	}
-
-	devfreq = kzalloc(sizeof(struct devfreq), GFP_KERNEL);
-	if (!devfreq) {
-		err = -ENOMEM;
-		goto err_out;
-	}
-
-	mutex_init(&devfreq->lock);
-	mutex_lock(&devfreq->lock);
-	devfreq->dev.parent = dev;
-	devfreq->dev.class = devfreq_class;
-	devfreq->dev.release = devfreq_dev_release;
-	INIT_LIST_HEAD(&devfreq->node);
-	devfreq->profile = profile;
-	devfreq->previous_freq = profile->initial_freq;
-	devfreq->last_status.current_frequency = profile->initial_freq;
-	devfreq->data = data;
-	devfreq->nb.notifier_call = devfreq_notifier_call;
-
-	if (devfreq->profile->timer < 0
-		|| devfreq->profile->timer >= DEVFREQ_TIMER_NUM) {
-		mutex_unlock(&devfreq->lock);
-		err = -EINVAL;
-		goto err_dev;
-	}
-
-	if (!devfreq->profile->max_state || !devfreq->profile->freq_table) {
-		mutex_unlock(&devfreq->lock);
-		err = set_freq_table(devfreq);
-		if (err < 0)
-			goto err_dev;
-		mutex_lock(&devfreq->lock);
-	} else {
-		devfreq->freq_table = devfreq->profile->freq_table;
-		devfreq->max_state = devfreq->profile->max_state;
-	}
-
-	devfreq->scaling_min_freq = find_available_min_freq(devfreq);
-	if (!devfreq->scaling_min_freq) {
-		mutex_unlock(&devfreq->lock);
-		err = -EINVAL;
-		goto err_dev;
-	}
-
-	devfreq->scaling_max_freq = find_available_max_freq(devfreq);
-	if (!devfreq->scaling_max_freq) {
-		mutex_unlock(&devfreq->lock);
-		err = -EINVAL;
-		goto err_dev;
-	}
-
-	devfreq_get_freq_range(devfreq, &min_freq, &max_freq);
-
-	devfreq->suspend_freq = dev_pm_opp_get_suspend_opp_freq(dev);
-	devfreq->opp_table = dev_pm_opp_get_opp_table(dev);
-	if (IS_ERR(devfreq->opp_table))
-		devfreq->opp_table = NULL;
-
-	atomic_set(&devfreq->suspend_count, 0);
-
-	dev_set_name(&devfreq->dev, "%s", dev_name(dev));
-	err = device_register(&devfreq->dev);
-	if (err) {
-		mutex_unlock(&devfreq->lock);
-		put_device(&devfreq->dev);
-		goto err_out;
-	}
-
-	devfreq->stats.trans_table = devm_kzalloc(&devfreq->dev,
-			array3_size(sizeof(unsigned int),
-				    devfreq->max_state,
-				    devfreq->max_state),
-			GFP_KERNEL);
-	if (!devfreq->stats.trans_table) {
-		mutex_unlock(&devfreq->lock);
-		err = -ENOMEM;
-		goto err_devfreq;
-	}
-
-	devfreq->stats.time_in_state = devm_kcalloc(&devfreq->dev,
-			devfreq->max_state,
-			sizeof(*devfreq->stats.time_in_state),
-			GFP_KERNEL);
-	if (!devfreq->stats.time_in_state) {
-		mutex_unlock(&devfreq->lock);
-		err = -ENOMEM;
-		goto err_devfreq;
-	}
-
-	devfreq->stats.total_trans = 0;
-	devfreq->stats.last_update = get_jiffies_64();
-
-	srcu_init_notifier_head(&devfreq->transition_notifier_list);
-
-	mutex_unlock(&devfreq->lock);
-
-	err = dev_pm_qos_add_request(dev, &devfreq->user_min_freq_req,
-				     DEV_PM_QOS_MIN_FREQUENCY, 0);
-	if (err < 0)
-		goto err_devfreq;
-	err = dev_pm_qos_add_request(dev, &devfreq->user_max_freq_req,
-				     DEV_PM_QOS_MAX_FREQUENCY,
-				     PM_QOS_MAX_FREQUENCY_DEFAULT_VALUE);
-	if (err < 0)
-		goto err_devfreq;
-
-	devfreq->nb_min.notifier_call = qos_min_notifier_call;
-	err = dev_pm_qos_add_notifier(dev, &devfreq->nb_min,
-				      DEV_PM_QOS_MIN_FREQUENCY);
-	if (err)
-		goto err_devfreq;
-
-	devfreq->nb_max.notifier_call = qos_max_notifier_call;
-	err = dev_pm_qos_add_notifier(dev, &devfreq->nb_max,
-				      DEV_PM_QOS_MAX_FREQUENCY);
-	if (err)
-		goto err_devfreq;
-
-	mutex_lock(&devfreq_list_lock);
-
-	governor = try_then_request_governor(governor_name);
-	if (IS_ERR(governor)) {
-		dev_err(dev, "%s: Unable to find governor for the device\n",
-			__func__);
-		err = PTR_ERR(governor);
-		goto err_init;
-	}
-
-	devfreq->governor = governor;
-	err = devfreq->governor->event_handler(devfreq, DEVFREQ_GOV_START,
-						NULL);
-	if (err) {
-		dev_err_probe(dev, err,
-			"%s: Unable to start governor for the device\n",
-			 __func__);
-		goto err_init;
-	}
-	create_sysfs_files(devfreq, devfreq->governor);
-
-	list_add(&devfreq->node, &devfreq_list);
-
-	mutex_unlock(&devfreq_list_lock);
-
-	if (devfreq->profile->is_cooling_device) {
-		devfreq->cdev = devfreq_cooling_em_register(devfreq, NULL);
-		if (IS_ERR(devfreq->cdev))
-			devfreq->cdev = NULL;
-	}
-
-	return devfreq;
-
-err_init:
-	mutex_unlock(&devfreq_list_lock);
-err_devfreq:
-	devfreq_remove_device(devfreq);
-	devfreq = NULL;
-err_dev:
-	kfree(devfreq);
-err_out:
-	return ERR_PTR(err);
-}
-EXPORT_SYMBOL(devfreq_add_device);
 
 /**
  * devfreq_remove_device() - Remove devfreq feature from a device.
@@ -1818,6 +1623,205 @@ static struct attribute *devfreq_attrs[] = {
 };
 ATTRIBUTE_GROUPS(devfreq);
 
+static const struct class devfreq_class = {
+	.name = "devfreq",
+	.dev_groups = devfreq_groups,
+};
+
+/**
+ * devfreq_add_device() - Add devfreq feature to the device
+ * @dev:	the device to add devfreq feature.
+ * @profile:	device-specific profile to run devfreq.
+ * @governor_name:	name of the policy to choose frequency.
+ * @data:	devfreq driver pass to governors, governor should not change it.
+ */
+struct devfreq *devfreq_add_device(struct device *dev,
+				   struct devfreq_dev_profile *profile,
+				   const char *governor_name,
+				   void *data)
+{
+	struct devfreq *devfreq;
+	struct devfreq_governor *governor;
+	unsigned long min_freq, max_freq;
+	int err = 0;
+
+	if (!dev || !profile || !governor_name) {
+		dev_err(dev, "%s: Invalid parameters.\n", __func__);
+		return ERR_PTR(-EINVAL);
+	}
+
+	mutex_lock(&devfreq_list_lock);
+	devfreq = find_device_devfreq(dev);
+	mutex_unlock(&devfreq_list_lock);
+	if (!IS_ERR(devfreq)) {
+		dev_err(dev, "%s: devfreq device already exists!\n",
+			__func__);
+		err = -EINVAL;
+		goto err_out;
+	}
+
+	devfreq = kzalloc(sizeof(struct devfreq), GFP_KERNEL);
+	if (!devfreq) {
+		err = -ENOMEM;
+		goto err_out;
+	}
+
+	mutex_init(&devfreq->lock);
+	mutex_lock(&devfreq->lock);
+	devfreq->dev.parent = dev;
+	devfreq->dev.class = &devfreq_class;
+	devfreq->dev.release = devfreq_dev_release;
+	INIT_LIST_HEAD(&devfreq->node);
+	devfreq->profile = profile;
+	devfreq->previous_freq = profile->initial_freq;
+	devfreq->last_status.current_frequency = profile->initial_freq;
+	devfreq->data = data;
+	devfreq->nb.notifier_call = devfreq_notifier_call;
+
+	if (devfreq->profile->timer < 0
+		|| devfreq->profile->timer >= DEVFREQ_TIMER_NUM) {
+		mutex_unlock(&devfreq->lock);
+		err = -EINVAL;
+		goto err_dev;
+	}
+
+	if (!devfreq->profile->max_state || !devfreq->profile->freq_table) {
+		mutex_unlock(&devfreq->lock);
+		err = set_freq_table(devfreq);
+		if (err < 0)
+			goto err_dev;
+		mutex_lock(&devfreq->lock);
+	} else {
+		devfreq->freq_table = devfreq->profile->freq_table;
+		devfreq->max_state = devfreq->profile->max_state;
+	}
+
+	devfreq->scaling_min_freq = find_available_min_freq(devfreq);
+	if (!devfreq->scaling_min_freq) {
+		mutex_unlock(&devfreq->lock);
+		err = -EINVAL;
+		goto err_dev;
+	}
+
+	devfreq->scaling_max_freq = find_available_max_freq(devfreq);
+	if (!devfreq->scaling_max_freq) {
+		mutex_unlock(&devfreq->lock);
+		err = -EINVAL;
+		goto err_dev;
+	}
+
+	devfreq_get_freq_range(devfreq, &min_freq, &max_freq);
+
+	devfreq->suspend_freq = dev_pm_opp_get_suspend_opp_freq(dev);
+	devfreq->opp_table = dev_pm_opp_get_opp_table(dev);
+	if (IS_ERR(devfreq->opp_table))
+		devfreq->opp_table = NULL;
+
+	atomic_set(&devfreq->suspend_count, 0);
+
+	dev_set_name(&devfreq->dev, "%s", dev_name(dev));
+	err = device_register(&devfreq->dev);
+	if (err) {
+		mutex_unlock(&devfreq->lock);
+		put_device(&devfreq->dev);
+		goto err_out;
+	}
+
+	devfreq->stats.trans_table = devm_kzalloc(&devfreq->dev,
+			array3_size(sizeof(unsigned int),
+				    devfreq->max_state,
+				    devfreq->max_state),
+			GFP_KERNEL);
+	if (!devfreq->stats.trans_table) {
+		mutex_unlock(&devfreq->lock);
+		err = -ENOMEM;
+		goto err_devfreq;
+	}
+
+	devfreq->stats.time_in_state = devm_kcalloc(&devfreq->dev,
+			devfreq->max_state,
+			sizeof(*devfreq->stats.time_in_state),
+			GFP_KERNEL);
+	if (!devfreq->stats.time_in_state) {
+		mutex_unlock(&devfreq->lock);
+		err = -ENOMEM;
+		goto err_devfreq;
+	}
+
+	devfreq->stats.total_trans = 0;
+	devfreq->stats.last_update = get_jiffies_64();
+
+	srcu_init_notifier_head(&devfreq->transition_notifier_list);
+
+	mutex_unlock(&devfreq->lock);
+
+	err = dev_pm_qos_add_request(dev, &devfreq->user_min_freq_req,
+				     DEV_PM_QOS_MIN_FREQUENCY, 0);
+	if (err < 0)
+		goto err_devfreq;
+	err = dev_pm_qos_add_request(dev, &devfreq->user_max_freq_req,
+				     DEV_PM_QOS_MAX_FREQUENCY,
+				     PM_QOS_MAX_FREQUENCY_DEFAULT_VALUE);
+	if (err < 0)
+		goto err_devfreq;
+
+	devfreq->nb_min.notifier_call = qos_min_notifier_call;
+	err = dev_pm_qos_add_notifier(dev, &devfreq->nb_min,
+				      DEV_PM_QOS_MIN_FREQUENCY);
+	if (err)
+		goto err_devfreq;
+
+	devfreq->nb_max.notifier_call = qos_max_notifier_call;
+	err = dev_pm_qos_add_notifier(dev, &devfreq->nb_max,
+				      DEV_PM_QOS_MAX_FREQUENCY);
+	if (err)
+		goto err_devfreq;
+
+	mutex_lock(&devfreq_list_lock);
+
+	governor = try_then_request_governor(governor_name);
+	if (IS_ERR(governor)) {
+		dev_err(dev, "%s: Unable to find governor for the device\n",
+			__func__);
+		err = PTR_ERR(governor);
+		goto err_init;
+	}
+
+	devfreq->governor = governor;
+	err = devfreq->governor->event_handler(devfreq, DEVFREQ_GOV_START,
+						NULL);
+	if (err) {
+		dev_err_probe(dev, err,
+			"%s: Unable to start governor for the device\n",
+			 __func__);
+		goto err_init;
+	}
+	create_sysfs_files(devfreq, devfreq->governor);
+
+	list_add(&devfreq->node, &devfreq_list);
+
+	mutex_unlock(&devfreq_list_lock);
+
+	if (devfreq->profile->is_cooling_device) {
+		devfreq->cdev = devfreq_cooling_em_register(devfreq, NULL);
+		if (IS_ERR(devfreq->cdev))
+			devfreq->cdev = NULL;
+	}
+
+	return devfreq;
+
+err_init:
+	mutex_unlock(&devfreq_list_lock);
+err_devfreq:
+	devfreq_remove_device(devfreq);
+	devfreq = NULL;
+err_dev:
+	kfree(devfreq);
+err_out:
+	return ERR_PTR(err);
+}
+EXPORT_SYMBOL(devfreq_add_device);
+
 static ssize_t polling_interval_show(struct device *dev,
 				     struct device_attribute *attr, char *buf)
 {
@@ -2028,19 +2032,20 @@ DEFINE_SHOW_ATTRIBUTE(devfreq_summary);
 
 static int __init devfreq_init(void)
 {
-	devfreq_class = class_create("devfreq");
-	if (IS_ERR(devfreq_class)) {
+	int err;
+
+	err = class_register(&devfreq_class);
+	if (err) {
 		pr_err("%s: couldn't create class\n", __FILE__);
-		return PTR_ERR(devfreq_class);
+		return err;
 	}
 
 	devfreq_wq = create_freezable_workqueue("devfreq_wq");
 	if (!devfreq_wq) {
-		class_destroy(devfreq_class);
+		class_unregister(&devfreq_class);
 		pr_err("%s: couldn't create workqueue\n", __FILE__);
 		return -ENOMEM;
 	}
-	devfreq_class->dev_groups = devfreq_groups;
 
 	devfreq_debugfs = debugfs_create_dir("devfreq", NULL);
 	debugfs_create_file("devfreq_summary", 0444,
