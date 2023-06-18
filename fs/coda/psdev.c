@@ -49,7 +49,9 @@ unsigned long coda_timeout = 30; /* .. secs, then signals will dequeue */
 
 
 struct venus_comm coda_comms[MAX_CODADEVS];
-static struct class *coda_psdev_class;
+static const struct class coda_psdev_class = {
+	.name = "coda",
+};
 
 /*
  * Device operations
@@ -361,14 +363,12 @@ static int __init init_coda_psdev(void)
 		       __func__, CODA_PSDEV_MAJOR);
 		return -EIO;
 	}
-	coda_psdev_class = class_create("coda");
-	if (IS_ERR(coda_psdev_class)) {
-		err = PTR_ERR(coda_psdev_class);
+	err = class_register(&coda_psdev_class);
+	if (err)
 		goto out_chrdev;
-	}		
 	for (i = 0; i < MAX_CODADEVS; i++) {
 		mutex_init(&(&coda_comms[i])->vc_mutex);
-		device_create(coda_psdev_class, NULL,
+		device_create(&coda_psdev_class, NULL,
 			      MKDEV(CODA_PSDEV_MAJOR, i), NULL, "cfs%d", i);
 	}
 	coda_sysctl_init();
@@ -408,8 +408,8 @@ static int __init init_coda(void)
 	return 0;
 out:
 	for (i = 0; i < MAX_CODADEVS; i++)
-		device_destroy(coda_psdev_class, MKDEV(CODA_PSDEV_MAJOR, i));
-	class_destroy(coda_psdev_class);
+		device_destroy(&coda_psdev_class, MKDEV(CODA_PSDEV_MAJOR, i));
+	class_unregister(&coda_psdev_class);
 	unregister_chrdev(CODA_PSDEV_MAJOR, "coda");
 	coda_sysctl_clean();
 out1:
@@ -426,8 +426,8 @@ static void __exit exit_coda(void)
 	if (err != 0)
 		pr_warn("failed to unregister filesystem\n");
 	for (i = 0; i < MAX_CODADEVS; i++)
-		device_destroy(coda_psdev_class, MKDEV(CODA_PSDEV_MAJOR, i));
-	class_destroy(coda_psdev_class);
+		device_destroy(&coda_psdev_class, MKDEV(CODA_PSDEV_MAJOR, i));
+	class_unregister(&coda_psdev_class);
 	unregister_chrdev(CODA_PSDEV_MAJOR, "coda");
 	coda_sysctl_clean();
 	coda_destroy_inodecache();
