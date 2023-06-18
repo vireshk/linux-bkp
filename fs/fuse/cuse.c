@@ -68,7 +68,7 @@ struct cuse_conn {
 
 static DEFINE_MUTEX(cuse_lock);		/* protects registration */
 static struct list_head cuse_conntbl[CUSE_CONNTBL_LEN];
-static struct class *cuse_class;
+static const struct class cuse_class;
 
 static struct cuse_conn *fc_to_cc(struct fuse_conn *fc)
 {
@@ -367,7 +367,7 @@ static void cuse_process_init_reply(struct fuse_mount *fm,
 
 	device_initialize(dev);
 	dev_set_uevent_suppress(dev, 1);
-	dev->class = cuse_class;
+	dev->class = &cuse_class;
 	dev->devt = devt;
 	dev->release = cuse_gendev_release;
 	dev_set_drvdata(dev, cc);
@@ -602,6 +602,11 @@ static struct attribute *cuse_class_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(cuse_class_dev);
 
+static const struct class cuse_class = {
+	.name		= "cuse",
+	.dev_groups	= cuse_class_dev_groups,
+};
+
 static struct miscdevice cuse_miscdev = {
 	.minor		= CUSE_MINOR,
 	.name		= "cuse",
@@ -627,15 +632,13 @@ static int __init cuse_init(void)
 	/* CUSE is not prepared for FUSE_DEV_IOC_CLONE */
 	cuse_channel_fops.unlocked_ioctl	= NULL;
 
-	cuse_class = class_create("cuse");
-	if (IS_ERR(cuse_class))
-		return PTR_ERR(cuse_class);
-
-	cuse_class->dev_groups = cuse_class_dev_groups;
+	rc = class_register(&cuse_class);
+	if (rc)
+		return rc;
 
 	rc = misc_register(&cuse_miscdev);
 	if (rc) {
-		class_destroy(cuse_class);
+		class_unregister(&cuse_class);
 		return rc;
 	}
 
@@ -645,7 +648,7 @@ static int __init cuse_init(void)
 static void __exit cuse_exit(void)
 {
 	misc_deregister(&cuse_miscdev);
-	class_destroy(cuse_class);
+	class_unregister(&cuse_class);
 }
 
 module_init(cuse_init);
