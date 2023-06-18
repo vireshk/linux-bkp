@@ -505,7 +505,9 @@ static struct xt_target idletimer_tg[] __read_mostly = {
 #endif
 };
 
-static struct class *idletimer_tg_class;
+static const struct class idletimer_tg_class = {
+	.name = "xt_idletimer",
+};
 
 static struct device *idletimer_tg_device;
 
@@ -513,14 +515,11 @@ static int __init idletimer_tg_init(void)
 {
 	int err;
 
-	idletimer_tg_class = class_create("xt_idletimer");
-	err = PTR_ERR(idletimer_tg_class);
-	if (IS_ERR(idletimer_tg_class)) {
-		pr_debug("couldn't register device class\n");
+	err = class_register(&idletimer_tg_class);
+	if (err)
 		goto out;
-	}
 
-	idletimer_tg_device = device_create(idletimer_tg_class, NULL,
+	idletimer_tg_device = device_create(&idletimer_tg_class, NULL,
 					    MKDEV(0, 0), NULL, "timers");
 	err = PTR_ERR(idletimer_tg_device);
 	if (IS_ERR(idletimer_tg_device)) {
@@ -539,9 +538,9 @@ static int __init idletimer_tg_init(void)
 
 	return 0;
 out_dev:
-	device_destroy(idletimer_tg_class, MKDEV(0, 0));
+	device_destroy(&idletimer_tg_class, MKDEV(0, 0));
 out_class:
-	class_destroy(idletimer_tg_class);
+	class_unregister(&idletimer_tg_class);
 out:
 	return err;
 }
@@ -550,8 +549,8 @@ static void __exit idletimer_tg_exit(void)
 {
 	xt_unregister_targets(idletimer_tg, ARRAY_SIZE(idletimer_tg));
 
-	device_destroy(idletimer_tg_class, MKDEV(0, 0));
-	class_destroy(idletimer_tg_class);
+	device_destroy(&idletimer_tg_class, MKDEV(0, 0));
+	class_unregister(&idletimer_tg_class);
 }
 
 module_init(idletimer_tg_init);
