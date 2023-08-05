@@ -27,12 +27,6 @@ static DEFINE_SPINLOCK(c2port_idr_lock);
 static DEFINE_IDR(c2port_idr);
 
 /*
- * Local variables
- */
-
-static struct class *c2port_class;
-
-/*
  * C2 registers & commands defines
  */
 
@@ -897,6 +891,11 @@ static const struct attribute_group *c2port_groups[] = {
 	NULL,
 };
 
+static const struct class c2port_class = {
+	.name = "c2port",
+	.dev_groups = c2port_groups,
+};
+
 /*
  * Exported functions
  */
@@ -927,7 +926,7 @@ struct c2port_device *c2port_device_register(char *name,
 	c2dev->id = ret;
 	c2dev->ops = ops;
 
-	c2dev->dev = device_create(c2port_class, NULL, 0, c2dev,
+	c2dev->dev = device_create(&c2port_class, NULL, 0, c2dev,
 				   "c2port%d", c2dev->id);
 	if (IS_ERR(c2dev->dev)) {
 		ret = PTR_ERR(c2dev->dev);
@@ -973,7 +972,7 @@ void c2port_device_unregister(struct c2port_device *c2dev)
 	idr_remove(&c2port_idr, c2dev->id);
 	spin_unlock_irq(&c2port_idr_lock);
 
-	device_destroy(c2port_class, c2dev->id);
+	device_destroy(&c2port_class, c2dev->id);
 
 	kfree(c2dev);
 }
@@ -985,22 +984,23 @@ EXPORT_SYMBOL(c2port_device_unregister);
 
 static int __init c2port_init(void)
 {
+	int err;
+
 	printk(KERN_INFO "Silicon Labs C2 port support v. " DRIVER_VERSION
 		" - (C) 2007 Rodolfo Giometti\n");
 
-	c2port_class = class_create("c2port");
-	if (IS_ERR(c2port_class)) {
+	err = class_register(&c2port_class);
+	if (err) {
 		printk(KERN_ERR "c2port: failed to allocate class\n");
-		return PTR_ERR(c2port_class);
+		return err;
 	}
-	c2port_class->dev_groups = c2port_groups;
 
 	return 0;
 }
 
 static void __exit c2port_exit(void)
 {
-	class_destroy(c2port_class);
+	class_unregister(&c2port_class);
 }
 
 module_init(c2port_init);
