@@ -651,6 +651,7 @@ static struct attribute *cdx_bus_attrs[] = {
 };
 ATTRIBUTE_GROUPS(cdx_bus);
 
+//const struct bus_type cdx_bus_type = {
 struct bus_type cdx_bus_type = {
 	.name		= "cdx",
 	.match		= cdx_bus_match,
