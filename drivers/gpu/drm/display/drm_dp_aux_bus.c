@@ -166,7 +166,7 @@ static int dp_aux_ep_dev_modalias(const struct device *dev, struct kobj_uevent_e
 	return of_device_uevent_modalias(dev, env);
 }
 
-static struct device_type dp_aux_device_type_type = {
+static const struct device_type dp_aux_device_type_type = {
 	.groups		= dp_aux_ep_dev_groups,
 	.uevent		= dp_aux_ep_dev_modalias,
 	.release	= dp_aux_ep_dev_release,
