@@ -363,7 +363,7 @@ static struct attribute *drm_privacy_screen_attrs[] = {
 };
 ATTRIBUTE_GROUPS(drm_privacy_screen);
 
-static struct device_type drm_privacy_screen_type = {
+static const struct device_type drm_privacy_screen_type = {
 	.name = "privacy_screen",
 	.groups = drm_privacy_screen_groups,
 };
