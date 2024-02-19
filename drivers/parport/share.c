@@ -99,7 +99,7 @@ static struct parport_operations dead_ops = {
 	.owner		= NULL,
 };
 
-static struct device_type parport_device_type = {
+static const struct device_type parport_device_type = {
 	.name = "parport",
 };
 
