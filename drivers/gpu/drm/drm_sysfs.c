@@ -58,7 +58,15 @@ static struct device_type drm_sysfs_device_connector = {
 	.name = "drm_connector",
 };
 
-struct class *drm_class;
+static char *drm_devnode(const struct device *dev, umode_t *mode)
+{
+	return kasprintf(GFP_KERNEL, "dri/%s", dev_name(dev));
+}
+
+const struct class drm_class = {
+	.name = "drm",
+	.devnode = drm_devnode,
+};
 
 #ifdef CONFIG_ACPI
 static bool drm_connector_acpi_bus_match(struct device *dev)
@@ -92,11 +100,6 @@ static void drm_sysfs_acpi_unregister(void)
 static void drm_sysfs_acpi_register(void) { }
 static void drm_sysfs_acpi_unregister(void) { }
 #endif
-
-static char *drm_devnode(const struct device *dev, umode_t *mode)
-{
-	return kasprintf(GFP_KERNEL, "dri/%s", dev_name(dev));
-}
 
 static int typec_connector_bind(struct device *dev,
 				struct device *typec_connector, void *data)
@@ -142,18 +145,15 @@ int drm_sysfs_init(void)
 {
 	int err;
 
-	drm_class = class_create("drm");
-	if (IS_ERR(drm_class))
-		return PTR_ERR(drm_class);
+	err = class_register(&drm_class);
+	if (err)
+		return err;
 
-	err = class_create_file(drm_class, &class_attr_version.attr);
+	err = class_create_file(&drm_class, &class_attr_version.attr);
 	if (err) {
-		class_destroy(drm_class);
-		drm_class = NULL;
+		class_unregister(&drm_class);
 		return err;
 	}
-
-	drm_class->devnode = drm_devnode;
 
 	drm_sysfs_acpi_register();
 	return 0;
@@ -166,12 +166,9 @@ int drm_sysfs_init(void)
  */
 void drm_sysfs_destroy(void)
 {
-	if (IS_ERR_OR_NULL(drm_class))
-		return;
 	drm_sysfs_acpi_unregister();
-	class_remove_file(drm_class, &class_attr_version.attr);
-	class_destroy(drm_class);
-	drm_class = NULL;
+	class_remove_file(&drm_class, &class_attr_version.attr);
+	class_unregister(&drm_class);
 }
 
 static void drm_sysfs_release(struct device *dev)
@@ -351,7 +348,7 @@ int drm_sysfs_connector_add(struct drm_connector *connector)
 		return -ENOMEM;
 
 	device_initialize(kdev);
-	kdev->class = drm_class;
+	kdev->class = &drm_class;
 	kdev->type = &drm_sysfs_device_connector;
 	kdev->parent = dev->primary->kdev;
 	kdev->groups = connector_dev_groups;
@@ -530,7 +527,7 @@ struct device *drm_sysfs_minor_alloc(struct drm_minor *minor)
 			minor_str = "card%d";
 
 		kdev->devt = MKDEV(DRM_MAJOR, minor->index);
-		kdev->class = drm_class;
+		kdev->class = &drm_class;
 		kdev->type = &drm_sysfs_device_minor;
 	}
 
@@ -559,10 +556,7 @@ err_free:
  */
 int drm_class_device_register(struct device *dev)
 {
-	if (!drm_class || IS_ERR(drm_class))
-		return -ENOENT;
-
-	dev->class = drm_class;
+	dev->class = &drm_class;
 	return device_register(dev);
 }
 EXPORT_SYMBOL_GPL(drm_class_device_register);
