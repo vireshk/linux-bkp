@@ -54,7 +54,6 @@ struct drm_dp_aux_dev {
 #define AUX_MAX_OFFSET	(1 << 20)
 static DEFINE_IDR(aux_idr);
 static DEFINE_MUTEX(aux_idr_mutex);
-static struct class *drm_dp_aux_dev_class;
 static int drm_dev_major = -1;
 
 static struct drm_dp_aux_dev *drm_dp_aux_dev_get_by_minor(unsigned index)
@@ -124,6 +123,11 @@ static struct attribute *drm_dp_aux_attrs[] = {
 	NULL,
 };
 ATTRIBUTE_GROUPS(drm_dp_aux);
+
+static const struct class drm_dp_aux_dev_class = {
+	.name = "drm_dp_aux_dev",
+	.dev_groups = drm_dp_aux_groups,
+};
 
 static int auxdev_open(struct inode *inode, struct file *file)
 {
@@ -293,7 +297,7 @@ void drm_dp_aux_unregister_devnode(struct drm_dp_aux *aux)
 
 	minor = aux_dev->index;
 	if (aux_dev->dev)
-		device_destroy(drm_dp_aux_dev_class,
+		device_destroy(&drm_dp_aux_dev_class,
 			       MKDEV(drm_dev_major, minor));
 
 	DRM_DEBUG("drm_dp_aux_dev: aux [%s] unregistering\n", aux->name);
@@ -309,7 +313,7 @@ int drm_dp_aux_register_devnode(struct drm_dp_aux *aux)
 	if (IS_ERR(aux_dev))
 		return PTR_ERR(aux_dev);
 
-	aux_dev->dev = device_create(drm_dp_aux_dev_class, aux->dev,
+	aux_dev->dev = device_create(&drm_dp_aux_dev_class, aux->dev,
 				     MKDEV(drm_dev_major, aux_dev->index), NULL,
 				     "drm_dp_aux%d", aux_dev->index);
 	if (IS_ERR(aux_dev->dev)) {
@@ -330,11 +334,9 @@ int drm_dp_aux_dev_init(void)
 {
 	int res;
 
-	drm_dp_aux_dev_class = class_create("drm_dp_aux_dev");
-	if (IS_ERR(drm_dp_aux_dev_class)) {
-		return PTR_ERR(drm_dp_aux_dev_class);
-	}
-	drm_dp_aux_dev_class->dev_groups = drm_dp_aux_groups;
+	res = class_register(&drm_dp_aux_dev_class);
+	if (res)
+		return res;
 
 	res = register_chrdev(0, "aux", &auxdev_fops);
 	if (res < 0)
@@ -343,12 +345,12 @@ int drm_dp_aux_dev_init(void)
 
 	return 0;
 out:
-	class_destroy(drm_dp_aux_dev_class);
+	class_unregister(&drm_dp_aux_dev_class);
 	return res;
 }
 
 void drm_dp_aux_dev_exit(void)
 {
 	unregister_chrdev(drm_dev_major, "aux");
-	class_destroy(drm_dp_aux_dev_class);
+	class_unregister(&drm_dp_aux_dev_class);
 }
