@@ -78,7 +78,13 @@ static const u8 minor_type[] = {
 #define MAX_DVB_MINORS		(DVB_MAX_ADAPTERS * 64)
 #endif
 
-static struct class *dvb_class;
+static int dvb_uevent(const struct device *dev, struct kobj_uevent_env *env);
+static char *dvb_devnode(const struct device *dev, umode_t *mode);
+static const struct class dvb_class = {
+	.name = "dvb",
+	.dev_uevent = dvb_uevent,
+	.devnode = dvb_devnode,
+};
 
 static struct dvb_device *dvb_minors[MAX_DVB_MINORS];
 static DECLARE_RWSEM(minor_rwsem);
@@ -567,7 +573,7 @@ int dvb_register_device(struct dvb_adapter *adap, struct dvb_device **pdvbdev,
 		return ret;
 	}
 
-	clsdev = device_create(dvb_class, adap->device,
+	clsdev = device_create(&dvb_class, adap->device,
 			       MKDEV(DVB_MAJOR, minor),
 			       dvbdev, "dvb%d.%s%d", adap->num, dnames[type], id);
 	if (IS_ERR(clsdev)) {
@@ -606,7 +612,7 @@ void dvb_remove_device(struct dvb_device *dvbdev)
 
 	dvb_media_device_free(dvbdev);
 
-	device_destroy(dvb_class, MKDEV(DVB_MAJOR, dvbdev->minor));
+	device_destroy(&dvb_class, MKDEV(DVB_MAJOR, dvbdev->minor));
 
 	list_del(&dvbdev->list_head);
 }
@@ -1102,13 +1108,10 @@ static int __init init_dvbdev(void)
 		goto error;
 	}
 
-	dvb_class = class_create("dvb");
-	if (IS_ERR(dvb_class)) {
-		retval = PTR_ERR(dvb_class);
+	retval = class_register(&dvb_class);
+	if (retval != 0)
 		goto error;
-	}
-	dvb_class->dev_uevent = dvb_uevent;
-	dvb_class->devnode = dvb_devnode;
+
 	return 0;
 
 error:
@@ -1121,7 +1124,7 @@ static void __exit exit_dvbdev(void)
 {
 	struct dvbdevfops_node *node, *next;
 
-	class_destroy(dvb_class);
+	class_unregister(&dvb_class);
 	cdev_del(&dvb_device_cdev);
 	unregister_chrdev_region(MKDEV(DVB_MAJOR, 0), MAX_DVB_MINORS);
 
