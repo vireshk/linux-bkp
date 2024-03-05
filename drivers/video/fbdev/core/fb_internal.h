@@ -38,7 +38,7 @@ static inline int fb_show_logo(struct fb_info *info, int rotate)
 #endif /* CONFIG_LOGO */
 
 /* fbmem.c */
-extern struct class *fb_class;
+extern const struct class fb_class;
 extern struct mutex registration_lock;
 extern struct fb_info *registered_fb[FB_MAX];
 extern int num_registered_fb;
