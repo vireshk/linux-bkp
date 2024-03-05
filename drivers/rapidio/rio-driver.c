@@ -221,7 +221,7 @@ static int rio_uevent(const struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
-struct class rio_mport_class = {
+const struct class rio_mport_class = {
 	.name		= "rapidio_port",
 	.dev_groups	= rio_mport_groups,
 };
