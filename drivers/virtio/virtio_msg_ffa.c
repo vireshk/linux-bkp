@@ -13,6 +13,7 @@
 
 #include <linux/arm_ffa.h>
 #include <linux/cleanup.h>
+#include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/idr.h>
@@ -60,9 +61,12 @@ struct virtio_msg_ffa_device {
 		    struct virtio_msg *response,
 		    struct virtio_msg_indirect_data *idata);
 	struct task_struct *used_event_task;
+	struct virtio_msg_user_device vmudev;
+	struct completion completion;
 	int vmdev_count;
 	u32 features;
 	u16 msg_size;
+	bool passive;
 
 	dma_addr_t rmem_dma_handle;
 	struct ida area_id_map;
@@ -73,6 +77,8 @@ struct virtio_msg_ffa_device {
 #define to_vmdevdata(_vmdev) \
 	container_of(_vmdev, struct virtio_msg_device_data, vmdev)
 #define to_vmfdev(_vmdev) ((struct virtio_msg_ffa_device *)(_vmdev)->bus_data)
+#define vmudev_to_vmfdev(_vmudev) \
+	container_of(_vmudev, struct virtio_msg_ffa_device, vmudev)
 
 static inline dma_addr_t ffa_to_dma(u32 area_id, dma_addr_t offset)
 {
@@ -130,7 +136,8 @@ static int vmsg_ffa_send_indirect(struct virtio_msg_ffa_device *vmfdev,
 	 * Store the response pointer in idata structure. This will be updated
 	 * by vmsg_ffa_notifier_cb() later.
 	 */
-	idata->response = response;
+	if (idata)
+		idata->response = response;
 
 try_again:
 	ret = ffa_dev->ops->msg_ops->indirect_send(ffa_dev, request,
@@ -149,14 +156,16 @@ try_again:
 	 * Always wait for the operation to finish, otherwise we may start
 	 * another operation while the previous one is still ongoing.
 	 */
-	ret = wait_for_completion_interruptible_timeout(&idata->completion, 1000);
-	if (ret < 0) {
-		dev_err(dev, "Interrupted - waiting for a response: %d\n", ret);
-	} else if (!ret) {
-		dev_err(dev, "Timed out waiting for a response\n");
-		ret = -ETIMEDOUT;
-	} else {
-		ret = 0;
+	if (idata) {
+		ret = wait_for_completion_interruptible_timeout(&idata->completion, 1000);
+		if (ret < 0) {
+			dev_err(dev, "Interrupted - waiting for a response: %d\n", ret);
+		} else if (!ret) {
+			dev_err(dev, "Timed out waiting for a response\n");
+			ret = -ETIMEDOUT;
+		} else {
+			ret = 0;
+		}
 	}
 
 	return ret;
@@ -210,6 +219,29 @@ static int used_event_task(void *data)
 	return 0;
 }
 
+static void handle_event_passive(struct virtio_msg_ffa_device *vmfdev,
+				 struct virtio_msg *vmsg)
+{
+	struct virtio_msg_user_device *vmudev = &vmfdev->vmudev;
+
+	/*
+	 * Set `vmudev.vmsg` to `vmsg` and finish the completion to wake up the
+	 * `read()` thread.
+	 */
+	WRITE_ONCE(vmudev->vmsg, vmsg);
+	wake_up_poll(&vmudev->wait, EPOLLIN);
+
+	/*
+	 * Wait here for the `write()` thread to finish and not return
+	 * before the operation is finished to avoid any potential
+	 * races.
+	 *
+	 * Can't make a sleep-able call here.
+	 */
+	while (!try_wait_for_completion(&vmfdev->completion))
+		cpu_relax();
+}
+
 static void vmsg_ffa_notifier_cb(int notify_id, void *cb_data, void *buf)
 {
 	struct virtio_msg_ffa_device *vmfdev = cb_data;
@@ -217,6 +249,11 @@ static void vmsg_ffa_notifier_cb(int notify_id, void *cb_data, void *buf)
 	struct virtio_msg_indirect_data *idata;
 	struct virtio_msg_device *vmdev;
 	struct virtio_msg *vmsg = buf;
+
+	if (vmfdev->passive) {
+		handle_event_passive(vmfdev, vmsg);
+		return;
+	}
 
 	/*
 	 * We can either receive a response message (to a previously sent
@@ -652,6 +689,20 @@ static struct virtio_msg_ops vmf_ops = {
 	.bus_info = virtio_msg_ffa_bus_info,
 };
 
+static int virtio_msg_ffa_user_handle(struct virtio_msg_user_device *vmudev,
+				      struct virtio_msg *vmsg)
+{
+	struct virtio_msg_ffa_device *vmfdev = vmudev_to_vmfdev(vmudev);
+
+	vmfdev->send(vmfdev, vmsg, NULL, NULL);
+	complete(&vmfdev->completion);
+	return 0;
+}
+
+static struct virtio_msg_user_ops vmf_user_ops = {
+	.handle = virtio_msg_ffa_user_handle,
+};
+
 static void remove_vmdevs(struct virtio_msg_ffa_device *vmfdev, int count)
 {
 	while (count--)
@@ -733,19 +784,35 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 		dev_err(dev, "Direct or Indirect messages not supported\n");
 		return -EINVAL;
 	}
-
 	vmfdev->ffa_dev = ffa_dev;
 	vmfdev->msg_size = VIRTIO_MSG_FFA_BUS_MSG_SIZE;
 	vmfdev->rmem = ERR_PTR(-ENOMEM);
+	init_completion(&vmfdev->completion);
 	ffa_dev_set_drvdata(ffa_dev, vmfdev);
 	init_completion(&vmfdev->idata.completion);
 	INIT_LIST_HEAD(&vmfdev->area_list);
 	ida_init(&vmfdev->area_id_map);
 	mutex_init(&vmfdev->lock);
 
+	/* Activate passive mode on host domain */
+	vmfdev->passive = ffa_dev->vm_id != 1;
+
 	ret = vmsg_ffa_notify_setup(vmfdev);
 	if (ret && ffa_partition_supports_indirect_msg(ffa_dev))
 		goto ida_destroy;
+
+	if (vmfdev->passive) {
+		vmfdev->vmudev.ops = &vmf_user_ops;
+		vmfdev->vmudev.parent = &ffa_dev->dev;
+
+		ret = virtio_msg_user_register(&vmfdev->vmudev);
+		if (ret) {
+			dev_err(&ffa_dev->dev, "Could not register virtio-msg user device\n");
+			goto notify_cleanup;
+		}
+
+		return 0;
+	}
 
 	ret = vmsg_ffa_bus_version(vmfdev);
 	if (ret)
@@ -825,9 +892,14 @@ static void virtio_msg_ffa_remove(struct ffa_device *ffa_dev)
 {
 	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
 
-	kthread_stop(vmfdev->used_event_task);
-	remove_vmdevs(vmfdev, vmfdev->vmdev_count);
-	virtio_msg_ffa_rmem_release(vmfdev);
+	if (vmfdev->passive) {
+		virtio_msg_user_unregister(&vmfdev->vmudev);
+	} else {
+		kthread_stop(vmfdev->used_event_task);
+		remove_vmdevs(vmfdev, vmfdev->vmdev_count);
+		virtio_msg_ffa_rmem_release(vmfdev);
+	}
+
 	vmsg_ffa_notify_cleanup(vmfdev);
 	ida_destroy(&vmfdev->area_id_map);
 }
