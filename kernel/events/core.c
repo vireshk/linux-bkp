@@ -12078,6 +12078,11 @@ static const struct attribute_group *pmu_dev_groups[] = {
 };
 
 static int pmu_bus_running;
+
+static struct device pmu_bus_root = {
+	.init_name	= "pmu_bus",
+};
+
 static struct bus_type pmu_bus = {
 	.name		= "event_source",
 	.dev_groups	= pmu_dev_groups,
@@ -12087,6 +12092,12 @@ static void pmu_dev_release(struct device *dev)
 {
 	kfree(dev);
 }
+
+#if defined(PERF_EVENTS_SYSFS_OLD_LAYOUT)
+#define	PERF_ROOT_DEVICE	NULL
+#else
+#define	PERF_ROOT_DEVICE	&pmu_bus_root
+#endif
 
 static int pmu_dev_alloc(struct pmu *pmu)
 {
@@ -12101,7 +12112,10 @@ static int pmu_dev_alloc(struct pmu *pmu)
 
 	dev_set_drvdata(pmu->dev, pmu);
 	pmu->dev->bus = &pmu_bus;
-	pmu->dev->parent = pmu->parent;
+	if (pmu->parent)
+		pmu->dev->parent = pmu->parent;
+	else
+		pmu->dev->parent = PERF_ROOT_DEVICE;
 	pmu->dev->release = pmu_dev_release;
 
 	ret = dev_set_name(pmu->dev, "%s", pmu->name);
@@ -14554,9 +14568,17 @@ static int __init perf_event_sysfs_init(void)
 
 	mutex_lock(&pmus_lock);
 
-	ret = bus_register(&pmu_bus);
-	if (ret)
+	ret = device_register(&pmu_bus_root);
+	if (ret) {
+		put_device(&pmu_bus_root);
 		goto unlock;
+	}
+
+	ret = bus_register(&pmu_bus);
+	if (ret) {
+		device_unregister(&pmu_bus_root);
+		goto unlock;
+	}
 
 	list_for_each_entry(pmu, &pmus, entry) {
 		if (pmu->dev)

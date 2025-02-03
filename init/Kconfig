@@ -1959,6 +1959,27 @@ config PERF_EVENTS
 
 	  Say Y if unsure.
 
+config PERF_EVENTS_SYSFS_OLD_LAYOUT
+	bool "Place kernel performance events in the root of the device tree"
+	default y
+	depends on PERF_EVENTS
+	help
+	  Kernel event devices were originally placed in the root of
+	  /sys/devices in sysfs incorrectly, and as they have grown over time,
+	  the proliferation of them has caused confusion.  Some older userspace
+	  tools default to looking only in the root of sysfs for these devices
+	  instead of properly searching /sys/bus/event_source/devices/ as the
+	  documentation requested.  Luckily most tools have been fixed up over
+	  time as other event devices were placed properly in the device tree
+	  hierarchy, but there are still some lingering toosl that have not
+	  noticed.  Select this option to allow those older
+	  tools to continue to work properly.
+
+	  This option will be removed in a few years once all of the older
+	  tools are finally updated.
+
+	  Say Y if unsure.
+
 config DEBUG_PERF_USE_VMALLOC
 	default n
 	bool "Debug: use vmalloc to back perf mmap() buffers"
