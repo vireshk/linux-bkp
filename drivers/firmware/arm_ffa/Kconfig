@@ -19,3 +19,19 @@ config ARM_FFA_SMCCC
 	bool
 	default ARM_FFA_TRANSPORT
 	depends on ARM64 && HAVE_ARM_SMCCC_DISCOVERY
+
+config ARM_FFA_ACS_USER
+    tristate "ACS User space FF-A interface"
+    depends on ARM_FFA_TRANSPORT
+    default n
+    help
+      Enable a character interface that can be used by the Architecture
+      Compliant Suite user application to validate the compliance of the
+      underlying system.
+      When the interface is opened, all other FF-A clients interfaces
+      inside the kernel are disabled (drivers get a BUSY error back) and
+      all notification handling is delegated to the ACS user space application.
+      Once the interface is closed, all behaviours goes back to normal.
+
+      This option shall not be enabled in a production system but only during
+      development.
