@@ -114,6 +114,7 @@ struct ffa_drv_info {
 };
 
 static struct ffa_drv_info *drv_info;
+static ffa_irq_callback *irq_callback;
 
 /*
  * The driver must be able to support all the versions from the earliest
@@ -1642,7 +1643,7 @@ static int ffa_setup_host_partition(int vm_id)
 	return ret;
 }
 
-static void ffa_partitions_cleanup(void)
+void ffa_partitions_cleanup(void)
 {
 	struct list_head *phead;
 	unsigned long idx;
@@ -1663,12 +1664,17 @@ static void ffa_partitions_cleanup(void)
 
 	xa_destroy(&drv_info->partition_info);
 }
+EXPORT_SYMBOL_GPL(ffa_partitions_cleanup);
 
-static int ffa_setup_partitions(void)
+int ffa_setup_partitions(void)
 {
 	int count, idx, ret;
 	struct ffa_device *ffa_dev;
 	struct ffa_partition_info *pbuf, *tpbuf;
+
+	if (!drv_info) {
+		return -EOPNOTSUPP;
+	}
 
 	if (drv_info->version == FFA_VERSION_1_0) {
 		ret = bus_register_notifier(&ffa_bus_type, &ffa_bus_nb);
@@ -1725,6 +1731,52 @@ static int ffa_setup_partitions(void)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(ffa_setup_partitions);
+
+int ffa_setup_rxtx(void)
+{
+	if (!drv_info)
+		return -EOPNOTSUPP;
+
+	return ffa_rxtx_map(virt_to_phys(drv_info->tx_buffer),
+						virt_to_phys(drv_info->rx_buffer),
+						drv_info->rxtx_bufsz / FFA_PAGE_SIZE);
+}
+EXPORT_SYMBOL_GPL(ffa_setup_rxtx);
+
+int ffa_cleanup_rxtx(void)
+{
+	if (!drv_info)
+		return -EOPNOTSUPP;
+
+	return ffa_rxtx_unmap(drv_info->vm_id);
+}
+EXPORT_SYMBOL_GPL(ffa_cleanup_rxtx);
+
+int ffa_get_version(void)
+{
+	if (!drv_info)
+		return -EOPNOTSUPP;
+
+	return drv_info->version;
+}
+EXPORT_SYMBOL_GPL(ffa_get_version);
+
+int ffa_register_irq_callback(ffa_irq_callback *callback)
+{
+	if (!drv_info)
+		return -EOPNOTSUPP;
+
+	if (irq_callback != NULL && callback == NULL)
+		irq_callback = NULL;
+	else if (irq_callback == NULL && callback != NULL)
+		irq_callback = callback;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(ffa_register_irq_callback);
 
 /* FFA FEATURE IDs */
 #define FFA_FEAT_NOTIFICATION_PENDING_INT	(1)
@@ -1736,7 +1788,10 @@ static irqreturn_t ffa_sched_recv_irq_handler(int irq, void *irq_data)
 	struct ffa_pcpu_irq *pcpu = irq_data;
 	struct ffa_drv_info *info = pcpu->info;
 
-	queue_work(info->notif_pcpu_wq, &info->sched_recv_irq_work);
+	if (irq_callback == NULL)
+		queue_work(info->notif_pcpu_wq, &info->sched_recv_irq_work);
+	else
+		irq_callback(irq);
 
 	return IRQ_HANDLED;
 }
@@ -1746,8 +1801,12 @@ static irqreturn_t notif_pend_irq_handler(int irq, void *irq_data)
 	struct ffa_pcpu_irq *pcpu = irq_data;
 	struct ffa_drv_info *info = pcpu->info;
 
-	queue_work_on(smp_processor_id(), info->notif_pcpu_wq,
-		      &info->notif_pcpu_work);
+	if (irq_callback == NULL) {
+		queue_work_on(smp_processor_id(), info->notif_pcpu_wq,
+				  &info->notif_pcpu_work);
+	} else {
+		irq_callback(irq);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -1940,6 +1999,8 @@ static void ffa_notifications_setup(void)
 		drv_info->bitmap_created = true;
 	}
 
+	irq_callback = NULL;
+
 	ret = ffa_irq_map(FFA_FEAT_SCHEDULE_RECEIVER_INT);
 	if (ret > 0)
 		drv_info->sched_recv_irq = ret;
@@ -2012,9 +2073,7 @@ static int __init ffa_init(void)
 		goto free_pages;
 	}
 
-	ret = ffa_rxtx_map(virt_to_phys(drv_info->tx_buffer),
-			   virt_to_phys(drv_info->rx_buffer),
-			   rxtx_bufsz / FFA_PAGE_SIZE);
+	ret = ffa_setup_rxtx();
 	if (ret) {
 		pr_err("failed to register FFA RxTx buffers\n");
 		goto free_pages;
@@ -2039,6 +2098,7 @@ free_pages:
 	free_pages_exact(drv_info->rx_buffer, rxtx_bufsz);
 free_drv_info:
 	kfree(drv_info);
+	drv_info = NULL;
 	return ret;
 }
 module_init(ffa_init);
@@ -2047,7 +2107,7 @@ static void __exit ffa_exit(void)
 {
 	ffa_notifications_cleanup();
 	ffa_partitions_cleanup();
-	ffa_rxtx_unmap(drv_info->vm_id);
+	ffa_cleanup_rxtx();
 	free_pages_exact(drv_info->tx_buffer, drv_info->rxtx_bufsz);
 	free_pages_exact(drv_info->rx_buffer, drv_info->rxtx_bufsz);
 	kfree(drv_info);
