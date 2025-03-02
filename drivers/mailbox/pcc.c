@@ -357,7 +357,7 @@ static irqreturn_t pcc_mbox_irq(int irq, void *p)
 	return IRQ_HANDLED;
 }
 
-int pcc_mbox_ioremap(struct mbox_chan *chan)
+static int pcc_mbox_ioremap(struct mbox_chan *chan)
 {
 	struct pcc_chan_info *pchan_info;
 	struct pcc_mbox_chan *pcc_mbox_chan;
@@ -374,7 +374,6 @@ int pcc_mbox_ioremap(struct mbox_chan *chan)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pcc_mbox_ioremap);
 
 /**
  * pcc_mbox_request_channel - PCC clients call this function to
@@ -409,7 +408,12 @@ pcc_mbox_request_channel(struct mbox_client *cl, int subspace_id)
 	if (rc)
 		return ERR_PTR(rc);
 
-	return &pchan->chan;
+	rc = pcc_mbox_ioremap(chan);
+	if (!rc)
+		return &pchan->chan;
+
+	mbox_free_channel(chan);
+	return ERR_PTR(rc);
 }
 EXPORT_SYMBOL_GPL(pcc_mbox_request_channel);
 
