@@ -412,7 +412,8 @@ unsigned int cpumask_next_wrap(int n, const struct cpumask *src)
  * @mask: the cpumask to search
  * @cpu: the cpu to ignore.
  *
- * Often used to find any cpu but smp_processor_id() in a mask.
+ * Often used to find any cpu but smp_processor_id() in a mask. If @cpu == -1,
+ * the function is equivalent to cpumask_any().
  * Return: >= nr_cpu_ids if no cpus set.
  */
 static __always_inline
@@ -420,7 +421,10 @@ unsigned int cpumask_any_but(const struct cpumask *mask, unsigned int cpu)
 {
 	unsigned int i;
 
-	cpumask_check(cpu);
+	/* -1 is a legal arg here. */
+	if (cpu != -1)
+		cpumask_check(cpu);
+
 	for_each_cpu(i, mask)
 		if (i != cpu)
 			break;
