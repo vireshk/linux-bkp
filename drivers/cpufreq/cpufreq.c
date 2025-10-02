@@ -3065,8 +3065,16 @@ static bool cpufreq_policy_is_good_for_eas(unsigned int cpu)
 		pr_debug("cpufreq policy not set for CPU: %d\n", cpu);
 		return false;
 	}
-
-	return sugov_is_governor(policy);
+	/*
+	 * For EAS compatibility, require that either schedutil be the policy
+	 * governor or the policy be managed directly by the cpufreq driver.
+	 *
+	 * In the latter case, EAS can only be enabled by the cpufreq driver
+	 * itself which will not enable EAS if it does not meet the EAS'
+	 * expectations regarding performance scaling response.
+	 */
+	return sugov_is_governor(policy) ||
+		(!policy->governor && policy->policy != CPUFREQ_POLICY_UNKNOWN);
 }
 
 bool cpufreq_ready_for_eas(const struct cpumask *cpu_mask)
