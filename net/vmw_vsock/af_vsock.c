@@ -89,6 +89,7 @@
 #include <linux/types.h>
 #include <linux/bitops.h>
 #include <linux/cred.h>
+#include <linux/dma-buf.h>
 #include <linux/errqueue.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -109,10 +110,13 @@
 #include <linux/unistd.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+#include <linux/xarray.h>
 #include <net/sock.h>
 #include <net/af_vsock.h>
 #include <uapi/linux/vm_sockets.h>
 #include <uapi/asm-generic/ioctls.h>
+
+MODULE_IMPORT_NS("DMA_BUF");
 
 static int __vsock_bind(struct sock *sk, struct sockaddr_vm *addr);
 static void vsock_sk_destruct(struct sock *sk);
@@ -129,6 +133,16 @@ struct proto vsock_proto = {
 	.psock_update_sk_prot = vsock_bpf_update_proto,
 #endif
 };
+
+/* Per-shmem event queued to be delivered as cmsg */
+struct vsock_shmem_evt {
+	struct list_head list;
+	struct vsock_shmem_desc desc;
+	struct file *lb_file; /* For loopback mode only */
+};
+
+/* Loopback-only: token -> struct file* handoff map */
+static DEFINE_XARRAY(vsock_shmem_xa);
 
 /* The default peer timeout indicates how long we will wait for a peer response
  * to a control message.
@@ -802,6 +816,11 @@ static struct sock *__vsock_create(struct net *net,
 	vsock_addr_init(&vsk->local_addr, VMADDR_CID_ANY, VMADDR_PORT_ANY);
 	vsock_addr_init(&vsk->remote_addr, VMADDR_CID_ANY, VMADDR_PORT_ANY);
 
+	if (sk->sk_type == SOCK_STREAM) {
+		spin_lock_init(&vsk->shmem_lock);
+		INIT_LIST_HEAD(&vsk->shmem_q);
+	}
+
 	sk->sk_destruct = vsock_sk_destruct;
 	sk->sk_backlog_rcv = vsock_queue_rcv_skb;
 	sock_reset_flag(sk, SOCK_DONE);
@@ -880,6 +899,21 @@ static void __vsock_release(struct sock *sk, int level)
 	while ((pending = vsock_dequeue_accept(sk)) != NULL) {
 		__vsock_release(pending, SINGLE_DEPTH_NESTING);
 		sock_put(pending);
+	}
+
+	/* free SHMEM queue */
+	if (sk->sk_socket && sk->sk_socket->type == SOCK_STREAM) {
+		struct vsock_shmem_evt *evt, *e;
+
+		/* free any queued shmem events (should be empty normally) */
+		spin_lock_bh(&vsk->shmem_lock);
+		list_for_each_entry_safe(evt, e, &vsk->shmem_q, list) {
+			list_del(&evt->list);
+			if (evt->lb_file)
+				fput(evt->lb_file);
+			kfree(evt);
+		}
+		spin_unlock_bh(&vsk->shmem_lock);
 	}
 
 	release_sock(sk);
@@ -2031,6 +2065,180 @@ static int vsock_connectible_getsockopt(struct socket *sock,
 	return 0;
 }
 
+static void vsock_shmem_queue_evt(struct vsock_sock *vsk, struct vsock_shmem_evt *evt)
+{
+	spin_lock_bh(&vsk->shmem_lock);
+	list_add_tail(&evt->list, &vsk->shmem_q);
+	spin_unlock_bh(&vsk->shmem_lock);
+}
+
+void vsock_shmem_received(struct vsock_sock *vsk,
+			  const struct vsock_shmem_desc *desc)
+{
+	struct vsock_shmem_evt *evt;
+	struct sock *sk = &vsk->sk;
+
+	evt = kmalloc(sizeof(*evt), GFP_ATOMIC);
+	if (!evt)
+		return;
+
+	evt->desc = *desc;
+	evt->lb_file = NULL;
+
+	/* Loopback-only: try to consume a published file for this fd */
+	if (vsk->transport == transport_local)
+		evt->lb_file = xa_erase(&vsock_shmem_xa, desc->fd);
+
+	vsock_shmem_queue_evt(vsk, evt);
+
+	/* wake readers */
+	sk->sk_data_ready(sk);
+}
+EXPORT_SYMBOL_GPL(vsock_shmem_received);
+
+static int vsock_sendmsg_shmem_lb(struct vsock_sock *vsk,
+				  struct vsock_shmem_desc *desc)
+{
+	struct file *old, *entry;
+	int err;
+
+	if (desc->subop != VSOCK_SHMEM_SUBOP_OFFER) {
+		/*
+		 * Reject invalid values for subop or
+		 * VSOCK_SHMEM_SUBOP_REVOKE for loopback
+		 * mode.
+		 */
+		return -EINVAL;
+	}
+
+	entry = fget(desc->fd);
+	if (!entry)
+		return -EBADF;
+
+	/* publish FD's file by token */
+	old = xa_store(&vsock_shmem_xa, desc->fd, entry, GFP_KERNEL);
+	if (xa_is_err(old)) {
+		fput(entry);
+		return xa_err(old);
+	}
+
+	/* Token used previously ? */
+	if (old)
+		fput(old);
+
+	/* send SHMEM control pkt (out-of-band) */
+	err = vsk->transport->send_shmem(vsk, desc);
+	if (err < 0)
+		return err;
+
+	return 0;
+}
+
+static int vsock_sendmsg_shmem_dmabuf(struct vsock_sock *vsk,
+				      struct vsock_shmem_desc *desc)
+{
+	struct dma_buf *dbuf = dma_buf_get(desc->fd);
+	struct vsock_shmem_desc *entry, *old;
+	int err;
+
+	/* The fd must belong to a dma-buf */
+	if (IS_ERR(dbuf))
+		return PTR_ERR(dbuf);
+
+	if (!dbuf->ops->shmem || !dbuf->ops->unshmem) {
+		err = -EOPNOTSUPP;
+		goto out;
+	}
+
+	if (desc->subop == VSOCK_SHMEM_SUBOP_OFFER) {
+		/* Share memory and get metadata in `desc` from dmabuf */
+		err = dbuf->ops->shmem(dbuf, desc);
+		if (err)
+			goto out;
+
+		entry = kmemdup(desc, sizeof(*desc), GFP_KERNEL);
+		if (!entry) {
+			err = -ENOMEM;
+			goto out;
+		}
+
+		/* Save a copy of descriptor by FD */
+		old = xa_store(&vsock_shmem_xa, desc->fd, entry, GFP_KERNEL);
+		if (xa_is_err(old)) {
+			kfree(entry);
+			err = xa_err(old);
+			goto out;
+		}
+
+		kfree(old);
+	} else if (desc->subop == VSOCK_SHMEM_SUBOP_REVOKE) {
+		entry = xa_erase(&vsock_shmem_xa, desc->fd);
+		if (!entry) {
+			err = -EINVAL;
+			goto out;
+		}
+
+		/* Copy the metadata */
+		memcpy(&desc->reserved, &entry->reserved,
+		       sizeof(desc->reserved));
+		kfree(entry);
+	} else {
+		err = -EINVAL;
+		goto out;
+	}
+
+	/* Don't leak kernel's FD */
+	desc->fd = -1;
+
+	/* send SHMEM control pkt (out-of-band) */
+	err = vsk->transport->send_shmem(vsk, desc);
+	if (err < 0)
+		goto out;
+	err = 0;
+
+	if (desc->subop == VSOCK_SHMEM_SUBOP_REVOKE)
+		dbuf->ops->unshmem(dbuf);
+
+out:
+	dma_buf_put(dbuf);
+	return err;
+}
+
+static int vsock_sendmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)
+{
+	const struct vsock_transport *transport = vsk->transport;
+	struct vsock_shmem_desc desc;
+	struct cmsghdr *cmsg;
+	int err;
+
+	if (!transport || !transport->send_shmem)
+		return -EOPNOTSUPP;
+
+	for (cmsg = CMSG_FIRSTHDR(msg); cmsg; cmsg = CMSG_NXTHDR(msg, cmsg)) {
+		if (cmsg->cmsg_level != SOL_VSOCK ||
+		    cmsg->cmsg_type != SCM_VSOCK_SHMEM)
+			return -EINVAL;
+
+		if (cmsg->cmsg_len < CMSG_LEN(sizeof(desc)))
+			return -EINVAL;
+
+		memcpy(&desc, CMSG_DATA(cmsg), sizeof(desc));
+
+		if (desc.fd < 0)
+			return -EINVAL;
+
+		if (transport == transport_local)
+			err = vsock_sendmsg_shmem_lb(vsk, &desc);
+		else
+			err = vsock_sendmsg_shmem_dmabuf(vsk, &desc);
+
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
 static int vsock_connectible_sendmsg(struct socket *sock, struct msghdr *msg,
 				     size_t len)
 {
@@ -2054,6 +2262,13 @@ static int vsock_connectible_sendmsg(struct socket *sock, struct msghdr *msg,
 	lock_sock(sk);
 
 	transport = vsk->transport;
+
+	/* Scan ancillary for SOL_VSOCK/SCM_VSOCK_SHMEM */
+	if (msg->msg_controllen) {
+		err = vsock_sendmsg_shmem(vsk, msg);
+		if (err)
+			return err;
+	}
 
 	/* Callers should not provide a destination with connection oriented
 	 * sockets.
@@ -2260,6 +2475,56 @@ static int vsock_connectible_wait_data(struct sock *sk,
 	return data;
 }
 
+static int vsock_recvmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)
+{
+	int err;
+
+	/* Do we want to receive shmem for dmabuf ? */
+	if (vsk->transport != transport_local)
+		return 0;
+
+	/* Deliver pending SHMEM events as ancillary cmsgs (SOL_VSOCK/SCM_VSOCK_SHMEM) */
+	while (1) {
+		struct vsock_shmem_evt *evt = NULL;
+
+		spin_lock_bh(&vsk->shmem_lock);
+		if (!list_empty(&vsk->shmem_q)) {
+			evt = list_first_entry(&vsk->shmem_q,
+					       struct vsock_shmem_evt, list);
+			list_del(&evt->list);
+		}
+		spin_unlock_bh(&vsk->shmem_lock);
+
+		if (!evt)
+			return 0;
+
+		/* If a file was attached, install an fd for the receiver */
+		if (evt->lb_file) {
+			int newfd = get_unused_fd_flags(O_CLOEXEC);
+			if (newfd < 0) {
+				vsock_shmem_queue_evt(vsk, evt);
+				return newfd;
+			}
+
+			fd_install(newfd, evt->lb_file);
+			evt->lb_file = NULL;
+			evt->desc.fd = newfd;
+		}
+
+		/* attach as ancillary data */
+		err = put_cmsg(msg, SOL_VSOCK, SCM_VSOCK_SHMEM,
+			       sizeof(evt->desc), &evt->desc);
+		if (err) {
+			vsock_shmem_queue_evt(vsk, evt);
+			return err;
+		}
+
+		kfree(evt);
+	}
+
+	return 0;
+}
+
 static int __vsock_stream_recvmsg(struct sock *sk, struct msghdr *msg,
 				  size_t len, int flags)
 {
@@ -2293,7 +2558,6 @@ static int __vsock_stream_recvmsg(struct sock *sk, struct msghdr *msg,
 	err = transport->notify_recv_init(vsk, target, &recv_data);
 	if (err < 0)
 		goto out;
-
 
 	while (1) {
 		ssize_t read;
@@ -2331,6 +2595,10 @@ static int __vsock_stream_recvmsg(struct sock *sk, struct msghdr *msg,
 		err = -sk->sk_err;
 	else if (sk->sk_shutdown & RCV_SHUTDOWN)
 		err = 0;
+
+	err = vsock_recvmsg_shmem(vsk, msg);
+	if (err)
+		goto out;
 
 	if (copied > 0)
 		err = copied;
