@@ -8,7 +8,10 @@
 #ifndef __AF_VSOCK_H__
 #define __AF_VSOCK_H__
 
+#include <linux/dma-buf.h>
 #include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/scatterlist.h>
 #include <linux/workqueue.h>
 #include <net/sock.h>
 #include <uapi/linux/vm_sockets.h>
@@ -73,6 +76,13 @@ struct vsock_sock {
 
 	/* Private to transport. */
 	void *trans;
+
+	/*
+	 * Queue of pending SHMEM events for userspace
+	 * (list of struct vsock_shmem_evt).
+	 */
+	spinlock_t shmem_lock;
+	struct list_head shmem_q;
 };
 
 s64 vsock_connectible_has_data(struct vsock_sock *vsk);
@@ -80,6 +90,13 @@ s64 vsock_stream_has_data(struct vsock_sock *vsk);
 s64 vsock_stream_has_space(struct vsock_sock *vsk);
 struct sock *vsock_create_connected(struct sock *parent);
 void vsock_data_ready(struct sock *sk);
+
+struct vsock_dma_buf {
+	struct dma_buf *dmabuf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sg_table;
+	struct device *dev;
+};
 
 /**** TRANSPORT ****/
 
@@ -183,6 +200,14 @@ struct vsock_transport {
 
 	/* Zero-copy. */
 	bool (*msgzerocopy_allow)(void);
+
+	/* Optional transport hook to map/unmap DMA buf with the device */
+	struct vsock_dma_buf * (*map_dma_buf)(struct dma_buf *dmabuf);
+	void (*unmap_dma_buf)(struct vsock_dma_buf *dbuf);
+
+	/* Optional transport hook to send a SHMEM control pkt */
+	int (*send_shmem)(struct vsock_sock *vsk,
+			  struct vsock_shmem_desc *desc);
 };
 
 /**** CORE ****/
@@ -256,4 +281,6 @@ static inline bool vsock_msgzerocopy_allow(const struct vsock_transport *t)
 {
 	return t->msgzerocopy_allow && t->msgzerocopy_allow();
 }
+
+void vsock_shmem_received(struct vsock_sock *vsk, struct vsock_shmem_desc *desc);
 #endif /* __AF_VSOCK_H__ */
