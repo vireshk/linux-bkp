@@ -2565,6 +2565,8 @@ int dev_pm_opp_set_config(struct device *dev, struct dev_pm_opp_config *config)
 		goto err;
 	}
 
+	pr_info("%s: %d: %s: %s\n", __func__, __LINE__, config->clk_names[0], config->regulator_names[0]);
+	config->clk_names = NULL;
 	/* Configure clocks */
 	if (config->clk_names) {
 		ret = _opp_set_clknames(opp_table, dev, config->clk_names,
@@ -2609,6 +2611,7 @@ int dev_pm_opp_set_config(struct device *dev, struct dev_pm_opp_config *config)
 	}
 
 	/* Configure supplies */
+	config->regulator_names = NULL;
 	if (config->regulator_names) {
 		ret = _opp_set_regulators(opp_table, dev,
 					  config->regulator_names);

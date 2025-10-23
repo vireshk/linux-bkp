@@ -68,10 +68,14 @@ impl cpufreq::Driver for CPUFreqDTDriver {
 
         mask.set(cpu);
 
-        let token = find_supply_names(dev, cpu)
-            .map(|names| {
+        let clk_name = Some(kernel::kvec![CString::try_from_fmt(fmt!("dummy_clk")).unwrap()].unwrap());
+        let reg_name = kernel::kvec![CString::try_from_fmt(fmt!("dummy_reg")).unwrap()].unwrap();
+        dbg!(&clk_name, &reg_name);
+        let token = clk_name
+            .map(|clk_name| {
                 opp::Config::<Self>::new()
-                    .set_regulator_names(names)?
+                    .set_regulator_names(reg_name)?
+                    .set_clk_names(clk_name)?
                     .set(dev)
             })
             .transpose()?;
