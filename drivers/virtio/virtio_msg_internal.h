@@ -9,6 +9,7 @@
 #ifndef _DRIVERS_VIRTIO_MSG_INTERNAL_H
 #define _DRIVERS_VIRTIO_MSG_INTERNAL_H
 
+#include <linux/device.h>
 #include <linux/miscdevice.h>
 #include <linux/virtio.h>
 #include <linux/wait.h>
@@ -18,6 +19,7 @@
 #define TOKEN_EVENT	0
 #define TOKEN_FIXED	1
 
+struct reserved_mem;
 struct virtio_msg_device;
 
 /*
@@ -89,5 +91,21 @@ static inline int virtio_msg_user_register(struct virtio_msg_user_device *vmudev
 
 static inline void virtio_msg_user_unregister(struct virtio_msg_user_device *vmudev) {}
 #endif /* CONFIG_VIRTIO_MSG_USER */
+
+#if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+struct ffa_device;
+extern const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops;
+
+int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
+			    size_t n_pages);
+int vmsg_ffa_bus_area_unshare(struct ffa_device *ffa_dev, dma_addr_t *dma_handle);
+
+int virtio_msg_ffa_dma_init(void);
+#else
+static inline int virtio_msg_ffa_dma_init(void)
+{
+	return 0;
+}
+#endif
 
 #endif /* _DRIVERS_VIRTIO_MSG_INTERNAL_H */
