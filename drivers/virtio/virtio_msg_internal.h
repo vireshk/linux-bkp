@@ -52,6 +52,7 @@ struct virtio_msg_device {
 	u16 dev_id;
 
 	struct virtio_msg *request;
+	struct virtio_msg *event;
 	struct virtio_msg *response;
 };
 
