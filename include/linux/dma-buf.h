@@ -276,6 +276,7 @@ struct dma_buf_ops {
 
 	int (*vmap)(struct dma_buf *dmabuf, struct iosys_map *map);
 	void (*vunmap)(struct dma_buf *dmabuf, struct iosys_map *map);
+	int (*shmem_data)(struct dma_buf *dmabuf, void *data);
 };
 
 /**
