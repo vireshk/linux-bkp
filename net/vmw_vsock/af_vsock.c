@@ -90,7 +90,9 @@
 #include <linux/bitops.h>
 #include <linux/cred.h>
 #include <linux/dma-buf.h>
+#include <linux/dma-buf-shmem.h>
 #include <linux/errqueue.h>
+#include <linux/file.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -138,11 +140,35 @@ struct proto vsock_proto = {
 struct vsock_shmem_evt {
 	struct list_head list;
 	struct vsock_shmem_desc desc;
-	struct file *lb_file; /* For loopback mode only */
+	struct file *file;
 };
 
-/* Loopback-only: token -> struct file* handoff map */
+/* Token -> shmem entry map */
 static DEFINE_XARRAY(vsock_shmem_xa);
+
+static int vsock_shmem_track_desc(int fd, const struct vsock_shmem_desc *desc)
+{
+	struct vsock_shmem_desc *copy, *old;
+
+	copy = kmemdup(desc, sizeof(*desc), GFP_KERNEL);
+	if (!copy)
+		return -ENOMEM;
+
+	copy->fd = fd;
+	old = xa_store(&vsock_shmem_xa, fd, copy, GFP_KERNEL);
+	if (xa_is_err(old)) {
+		kfree(copy);
+		return xa_err(old);
+	}
+
+	kfree(old);
+	return 0;
+}
+
+static struct vsock_shmem_desc *vsock_shmem_take_desc(int fd)
+{
+	return xa_erase(&vsock_shmem_xa, fd);
+}
 
 /* The default peer timeout indicates how long we will wait for a peer response
  * to a control message.
@@ -909,8 +935,8 @@ static void __vsock_release(struct sock *sk, int level)
 		spin_lock_bh(&vsk->shmem_lock);
 		list_for_each_entry_safe(evt, e, &vsk->shmem_q, list) {
 			list_del(&evt->list);
-			if (evt->lb_file)
-				fput(evt->lb_file);
+			if (evt->file)
+				fput(evt->file);
 			kfree(evt);
 		}
 		spin_unlock_bh(&vsk->shmem_lock);
@@ -2083,11 +2109,15 @@ void vsock_shmem_received(struct vsock_sock *vsk,
 		return;
 
 	evt->desc = *desc;
-	evt->lb_file = NULL;
+	evt->file = NULL;
 
 	/* Loopback-only: try to consume a published file for this fd */
-	if (vsk->transport == transport_local)
-		evt->lb_file = xa_erase(&vsock_shmem_xa, desc->fd);
+	if (vsk->transport == transport_local) {
+		evt->file = xa_erase(&vsock_shmem_xa, desc->fd);
+	} else if (desc->subop == VSOCK_SHMEM_SUBOP_OFFER) {
+		if (dma_shmem_import(desc, &evt->file))
+			evt->file = NULL;
+	}
 
 	vsock_shmem_queue_evt(vsk, evt);
 
@@ -2138,8 +2168,8 @@ static int vsock_sendmsg_shmem_dmabuf(struct vsock_sock *vsk,
 				      struct vsock_shmem_desc *desc)
 {
 	struct dma_buf *dbuf = dma_buf_get(desc->fd);
-	struct vsock_shmem_desc *entry, *old;
-	int err;
+	struct vsock_shmem_desc *entry;
+	int err, fd = desc->fd;
 
 	/* The fd must belong to a dma-buf */
 	if (IS_ERR(dbuf))
@@ -2156,23 +2186,11 @@ static int vsock_sendmsg_shmem_dmabuf(struct vsock_sock *vsk,
 		if (err)
 			goto out;
 
-		entry = kmemdup(desc, sizeof(*desc), GFP_KERNEL);
-		if (!entry) {
-			err = -ENOMEM;
+		err = vsock_shmem_track_desc(fd, desc);
+		if (err)
 			goto out;
-		}
-
-		/* Save a copy of descriptor by FD */
-		old = xa_store(&vsock_shmem_xa, desc->fd, entry, GFP_KERNEL);
-		if (xa_is_err(old)) {
-			kfree(entry);
-			err = xa_err(old);
-			goto out;
-		}
-
-		kfree(old);
 	} else if (desc->subop == VSOCK_SHMEM_SUBOP_REVOKE) {
-		entry = xa_erase(&vsock_shmem_xa, desc->fd);
+		entry = vsock_shmem_take_desc(desc->fd);
 		if (!entry) {
 			err = -EINVAL;
 			goto out;
@@ -2479,13 +2497,10 @@ static int vsock_recvmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)
 {
 	int err;
 
-	/* Do we want to receive shmem for dmabuf ? */
-	if (vsk->transport != transport_local)
-		return 0;
-
 	/* Deliver pending SHMEM events as ancillary cmsgs (SOL_VSOCK/SCM_VSOCK_SHMEM) */
 	while (1) {
 		struct vsock_shmem_evt *evt = NULL;
+		int newfd = -1;
 
 		spin_lock_bh(&vsk->shmem_lock);
 		if (!list_empty(&vsk->shmem_q)) {
@@ -2499,15 +2514,26 @@ static int vsock_recvmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)
 			return 0;
 
 		/* If a file was attached, install an fd for the receiver */
-		if (evt->lb_file) {
-			int newfd = get_unused_fd_flags(O_CLOEXEC);
+		if (evt->file) {
+			newfd = get_unused_fd_flags(O_CLOEXEC);
 			if (newfd < 0) {
 				vsock_shmem_queue_evt(vsk, evt);
 				return newfd;
 			}
 
-			fd_install(newfd, evt->lb_file);
-			evt->lb_file = NULL;
+			/* Is this required ? */
+			if (vsk->transport != transport_local &&
+			    evt->desc.subop == VSOCK_SHMEM_SUBOP_OFFER) {
+				err = vsock_shmem_track_desc(newfd, &evt->desc);
+				if (err) {
+					put_unused_fd(newfd);
+					vsock_shmem_queue_evt(vsk, evt);
+					return err;
+				}
+			}
+
+			fd_install(newfd, evt->file);
+			evt->file = NULL;
 			evt->desc.fd = newfd;
 		}
 
