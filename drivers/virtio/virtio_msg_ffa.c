@@ -366,6 +366,18 @@ static int vmsg_ffa_bus_event_configure(struct virtio_msg_ffa_device *vmfdev)
 }
 
 #if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+static unsigned int sg_npages(struct scatterlist *sgl, int nents)
+{
+	struct scatterlist *sg;
+	unsigned int npages = 0;
+	int i;
+
+	for_each_sg(sgl, sg, nents, i)
+		npages += DIV_ROUND_UP(sg->offset + sg->length, PAGE_SIZE);
+
+	return npages;
+}
+
 static int vmsg_ffa_bus_area_share_sgl_unlocked(struct ffa_device *ffa_dev,
 						struct scatterlist *sgl,
 						size_t n_pages,
@@ -442,6 +454,19 @@ free_area:
 
 	return ret;
 }
+
+int vmsg_ffa_bus_area_share_sgl(struct ffa_device *ffa_dev,
+				struct scatterlist *sgl, int nents,
+				dma_addr_t *dma_handle)
+{
+	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
+	size_t n_pages = sg_npages(sgl, nents);
+
+	guard(mutex)(&vmfdev->lock);
+
+	return vmsg_ffa_bus_area_share_sgl_unlocked(ffa_dev, sgl, n_pages, dma_handle);
+}
+EXPORT_SYMBOL_GPL(vmsg_ffa_bus_area_share_sgl);
 
 static int vmsg_ffa_bus_area_share_single(struct ffa_device *ffa_dev,
 					  dma_addr_t *dma_handle,
@@ -717,6 +742,13 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 		vmdev->dev_id = bit;
 		vmdev->ops = &vmf_ops;
 		vmdev->vdev.dev.parent = dev;
+
+#if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+		/* Set DMA-OPS for virtio-msg devices to allow DMA operations */
+		vmdev->vdev.dev.dma_ops = &virtio_msg_ffa_dev_dma_ops;
+		dma_coerce_mask_and_coherent(&vmdev->vdev.dev, DMA_BIT_MASK(64));
+#endif
+
 		vmdev->bus_data = vmfdev;
 
 		ret = virtio_msg_register(vmdev);

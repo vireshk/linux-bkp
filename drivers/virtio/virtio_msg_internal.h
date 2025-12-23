@@ -94,8 +94,14 @@ static inline void virtio_msg_user_unregister(struct virtio_msg_user_device *vmu
 
 #if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
 struct ffa_device;
-extern const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops;
+struct scatterlist;
 
+extern const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops;
+extern const struct dma_map_ops virtio_msg_ffa_dev_dma_ops;
+
+int vmsg_ffa_bus_area_share_sgl(struct ffa_device *ffa_dev,
+				struct scatterlist *sgl, int nents,
+				dma_addr_t *dma_handle);
 int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
 			    size_t n_pages);
 int vmsg_ffa_bus_area_unshare(struct ffa_device *ffa_dev, dma_addr_t *dma_handle);
