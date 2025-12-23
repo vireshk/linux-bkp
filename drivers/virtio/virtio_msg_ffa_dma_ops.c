@@ -189,3 +189,90 @@ int virtio_msg_ffa_dma_init(void)
 	virtio_set_mem_acc_cb(virtio_msg_dma_ops_init);
 	return 0;
 }
+
+/* DMA HEAP */
+static void *virtio_msg_dma_alloc_heap(struct device *dev, size_t size,
+				       dma_addr_t *dma_handle, gfp_t gfp,
+				       unsigned long attrs)
+{
+	size_t n_pages = PFN_UP(size);
+	void *vaddr;
+	int ret;
+
+	vaddr = (void *)__get_free_pages(gfp, get_order(size));
+	if (!vaddr)
+		return NULL;
+	*dma_handle = virt_to_phys(vaddr);
+
+	ret = vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), vaddr, n_pages, dma_handle);
+	if (ret) {
+		dma_direct_free(dev, size, vaddr, *dma_handle, attrs);
+		return NULL;
+	}
+
+	return vaddr;
+}
+
+static void virtio_msg_dma_free_heap(struct device *dev, size_t size,
+				     void *vaddr, dma_addr_t dma_handle,
+				     unsigned long attrs)
+{
+	size_t n_pages = PFN_UP(size);
+	int ret;
+
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle, n_pages);
+	if (ret)
+		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
+
+	free_pages((unsigned long)vaddr, get_order(size));
+}
+
+static dma_addr_t virtio_msg_dma_map_page_heap(struct device *dev, struct page *page,
+					 unsigned long offset, size_t size,
+					 enum dma_data_direction dir,
+					 unsigned long attrs)
+{
+	dma_addr_t dma_handle = page_to_phys(page);
+	size_t n_pages = PFN_UP(offset + size);
+
+	if (WARN_ON(dir == DMA_NONE))
+		return DMA_MAPPING_ERROR;
+
+	if (vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), page_to_virt(page),
+				    n_pages, &dma_handle))
+		return DMA_MAPPING_ERROR;
+
+	return dma_handle + offset;
+}
+
+static void virtio_msg_dma_unmap_page_heap(struct device *dev, dma_addr_t dma_handle,
+				     size_t size, enum dma_data_direction dir,
+				     unsigned long attrs)
+{
+	unsigned long dma_offset = offset_in_page(dma_handle);
+	unsigned int n_pages = PFN_UP(dma_offset + size);
+	int ret;
+
+	if (WARN_ON(dir == DMA_NONE))
+		return;
+
+	dma_handle -= dma_offset;
+
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle, n_pages);
+	if (ret)
+		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
+}
+
+const struct dma_map_ops virtio_msg_ffa_heap_dma_ops = {
+	.alloc = virtio_msg_dma_alloc_heap,
+	.free = virtio_msg_dma_free_heap,
+	.alloc_pages_op = dma_common_alloc_pages,
+	.free_pages = dma_common_free_pages,
+	.mmap = dma_common_mmap,
+	.get_sgtable = dma_common_get_sgtable,
+	.map_page = virtio_msg_dma_map_page_heap,
+	.unmap_page = virtio_msg_dma_unmap_page_heap,
+	.map_sg = virtio_msg_dma_map_sg,
+	.unmap_sg = virtio_msg_dma_unmap_sg,
+	.dma_supported = virtio_msg_dma_supported,
+};

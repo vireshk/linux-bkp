@@ -95,6 +95,7 @@ static inline void virtio_msg_user_unregister(struct virtio_msg_user_device *vmu
 #if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
 struct ffa_device;
 extern const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops;
+extern const struct dma_map_ops virtio_msg_ffa_heap_dma_ops;
 
 int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, void *vaddr, size_t n_pages,
 			    dma_addr_t *dma_handle);
