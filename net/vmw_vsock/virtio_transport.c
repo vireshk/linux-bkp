@@ -9,10 +9,12 @@
  * Some of the code is take from Gerd Hoffmann <kraxel@redhat.com>'s
  * early virtio-vsock proof-of-concept bits.
  */
+#include <linux/dma-buf.h>
 #include <linux/spinlock.h>
 #include <linux/module.h>
 #include <linux/list.h>
 #include <linux/atomic.h>
+#include <linux/scatterlist.h>
 #include <linux/virtio.h>
 #include <linux/virtio_ids.h>
 #include <linux/virtio_config.h>
@@ -538,6 +540,61 @@ static bool virtio_transport_msgzerocopy_allow(void)
 
 static bool virtio_transport_seqpacket_allow(u32 remote_cid);
 
+static struct vsock_dma_buf *virtio_transport_map_dma_buf(struct dma_buf *dmabuf)
+{
+	struct virtio_vsock *vsock;
+	struct vsock_dma_buf *dbuf;
+	struct device *dev = NULL;
+	int ret;
+
+	dbuf = kmalloc(sizeof(*dbuf), GFP_KERNEL);
+	if (!dbuf)
+		return ERR_PTR(-ENOMEM);
+
+	rcu_read_lock();
+	vsock = rcu_dereference(the_virtio_vsock);
+	if (vsock)
+		dev = get_device(&vsock->vdev->dev);
+	rcu_read_unlock();
+
+	if (unlikely(!dev)) {
+		ret = -ENODEV;
+		goto free_dbuf;
+	}
+
+	dbuf->attach = dma_buf_attach(dmabuf, dev);
+	if (IS_ERR(dbuf->attach)) {
+		ret = PTR_ERR(dbuf->attach);
+		goto device_put;
+	}
+
+	dbuf->sg_table = dma_buf_map_attachment_unlocked(dbuf->attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(dbuf->sg_table)) {
+		ret = PTR_ERR(dbuf->sg_table);
+		goto detach;
+	}
+
+	dbuf->dmabuf = dmabuf;
+	dbuf->dev = dev;
+	return dbuf;
+
+detach:
+	dma_buf_detach(dmabuf, dbuf->attach);
+device_put:
+	put_device(dev);
+free_dbuf:
+	kfree(dbuf);
+	return ERR_PTR(ret);
+}
+
+static void virtio_transport_unmap_dma_buf(struct vsock_dma_buf *dbuf)
+{
+	dma_buf_unmap_attachment_unlocked(dbuf->attach, dbuf->sg_table, DMA_BIDIRECTIONAL);
+	dma_buf_detach(dbuf->dmabuf, dbuf->attach);
+	put_device(dbuf->dev);
+	kfree(dbuf);
+}
+
 static struct virtio_transport virtio_transport = {
 	.transport = {
 		.module                   = THIS_MODULE,
@@ -585,6 +642,8 @@ static struct virtio_transport virtio_transport = {
 		.notify_set_rcvlowat      = virtio_transport_notify_set_rcvlowat,
 
 		.unsent_bytes             = virtio_transport_unsent_bytes,
+		.map_dma_buf              = virtio_transport_map_dma_buf,
+		.unmap_dma_buf            = virtio_transport_unmap_dma_buf,
 		.send_shmem               = virtio_transport_send_shmem,
 
 		.read_skb = virtio_transport_read_skb,

@@ -20,7 +20,6 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of_reserved_mem.h>
-#include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/types.h>
@@ -69,8 +68,6 @@ struct virtio_msg_ffa_device {
 	struct ida area_id_map;
 	struct list_head area_list;
 	struct mutex lock; /* protects area_list */
-
-	struct platform_device *heap_pdev;
 };
 
 #define to_vmdevdata(_vmdev) \
@@ -700,10 +697,6 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 {
 	struct virtio_msg_ffa_device *vmfdev;
 	struct device *dev = &ffa_dev->dev;
-	struct platform_device_info devinfo = {
-		.name = "ffa_dma_heap",
-		.parent = dev,
-	};
 	struct virtio_msg_device *vmdev;
 	unsigned long devices = 0;
 	int ret, i = 0, bit;
@@ -769,6 +762,9 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 		vmdev->dev_id = bit;
 		vmdev->ops = &vmf_ops;
 		vmdev->vdev.dev.parent = dev;
+		vmdev->vdev.dev.dma_ops = &virtio_msg_ffa_heap_dma_ops;
+		dma_coerce_mask_and_coherent(&vmdev->vdev.dev, DMA_BIT_MASK(64));
+
 		vmdev->bus_data = vmfdev;
 
 		ret = virtio_msg_register(vmdev);
@@ -789,11 +785,6 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 		}
 	}
 
-	vmfdev->heap_pdev = platform_device_register_full(&devinfo);
-	if (IS_ERR(vmfdev->heap_pdev))
-		dev_warn(dev, "Failed to register FF-A DMA HEAP (%ld)\n",
-			 PTR_ERR(vmfdev->heap_pdev));
-
 	return 0;
 
 unregister:
@@ -810,9 +801,6 @@ ida_destroy:
 static void virtio_msg_ffa_remove(struct ffa_device *ffa_dev)
 {
 	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
-
-	if (!IS_ERR(vmfdev->heap_pdev))
-		platform_device_unregister(vmfdev->heap_pdev);
 
 	kthread_stop(vmfdev->used_event_task);
 	remove_vmdevs(vmfdev, vmfdev->vmdev_count);

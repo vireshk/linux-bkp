@@ -227,8 +227,9 @@ struct sockaddr_vm {
 /* Userspace-visible descriptor transferred as ancillary cmsg payload */
 struct vsock_shmem_user_desc {
 	__u32 subop; /*VSOCK_SHMEM_SUBOP_* */
+	__u32 type; /* VSOCK_SHMEM_TYPE_* */
 	__s32 fd;
-};
+} __attribute__((packed));
 
 /* Descriptor carried as payload for VIRTIO_VSOCK_OP_SHMEM control packet */
 struct vsock_shmem_desc {
@@ -236,12 +237,20 @@ struct vsock_shmem_desc {
 	__u32 type; /* VSOCK_SHMEM_TYPE_* */
 	__u32 len; /* Length of this descriptor including payload */
 	__u8 payload[]; /* SHMEM Type specific metadata */
-};
-
-#define VSOCK_SHMEM_PAYLOAD_SIZE_MAX	16
+} __attribute__((packed));
 
 struct vsock_shmem_desc_payload_lb {
 	__s32 fd;
 };
+
+struct vsock_shmem_desc_payload_dma_buf_sg {
+	__u64 addr;
+	__u32 len;
+} __attribute__((packed));
+
+struct vsock_shmem_desc_payload_dma_buf {
+	__u32 nents;
+	struct vsock_shmem_desc_payload_dma_buf_sg sgs[];
+} __attribute__((packed));
 
 #endif /* _UAPI_VM_SOCKETS_H */

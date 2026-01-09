@@ -285,7 +285,7 @@ static int ffa_heap_dma_buf_shmem_data(struct dma_buf *dmabuf, void *data)
 	struct vsock_shmem_desc_payload_ffa *payload =
 		(struct vsock_shmem_desc_payload_ffa *)desc->payload;
 
-	static_assert(sizeof(*payload) <= VSOCK_SHMEM_PAYLOAD_SIZE_MAX);
+//	static_assert(sizeof(*payload) <= VSOCK_SHMEM_PAYLOAD_SIZE_MAX);
 
 	desc->type = VSOCK_SHMEM_TYPE_FFA;
 	desc->len = sizeof(*desc) + sizeof(*payload);

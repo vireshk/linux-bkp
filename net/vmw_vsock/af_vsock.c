@@ -140,6 +140,11 @@ struct vsock_shmem_evt {
 	struct vsock_shmem_desc *desc;
 };
 
+struct vsock_shmem_dbuf {
+	struct vsock_dma_buf *vdbuf;
+	struct vsock_shmem_desc desc;
+};
+
 /* Loopback-only: token -> struct file* handoff map */
 static DEFINE_XARRAY(vsock_shmem_xa);
 
@@ -2095,6 +2100,9 @@ static int vsock_sendmsg_shmem_lb(struct vsock_sock *vsk,
 	int err, len = sizeof(*desc) + sizeof(*payload);
 	struct file *old, *file;
 
+	if (udesc->type != VSOCK_SHMEM_TYPE_LB)
+		return -EINVAL;
+
 	if (udesc->subop != VSOCK_SHMEM_SUBOP_OFFER) {
 		/*
 		 * Reject invalid values for subop or
@@ -2128,7 +2136,7 @@ static int vsock_sendmsg_shmem_lb(struct vsock_sock *vsk,
 	payload = (struct vsock_shmem_desc_payload_lb *)desc->payload;
 	payload->fd = udesc->fd;
 	desc->subop = udesc->subop;
-	desc->type = VSOCK_SHMEM_TYPE_LB;
+	desc->type = udesc->type;
 	desc->len = len;
 
 	/* send SHMEM control pkt (out-of-band) */
@@ -2147,50 +2155,112 @@ free_file:
 	return err;
 }
 
+static int vsock_sendmsg_shmem_dmabuf_map(struct vsock_sock *vsk,
+					  struct vsock_shmem_user_desc *udesc)
+{
+	struct vsock_shmem_desc_payload_dma_buf *payload;
+	struct vsock_shmem_desc_payload_dma_buf_sg *sgs;
+	struct vsock_shmem_dbuf *data, *old;
+	struct vsock_shmem_desc *desc;
+	struct vsock_dma_buf *vdbuf;
+	struct dma_buf *dmabuf;
+	struct scatterlist *sg;
+	struct sg_table *sgt;
+	int err, plen, i;
+
+	if (!vsk->transport->map_dma_buf)
+		return -EOPNOTSUPP;
+
+	/* The fd must belong to a dma-buf */
+	dmabuf = dma_buf_get(udesc->fd);
+	if (IS_ERR(dmabuf))
+		return PTR_ERR(dmabuf);
+
+	vdbuf = vsk->transport->map_dma_buf(dmabuf);
+	if (IS_ERR(vdbuf)) {
+		err = PTR_ERR(vdbuf);
+		goto free_dmabuf;
+	}
+
+	sgt = vdbuf->sg_table;
+	plen = sizeof(*payload) + sizeof(*sgs) * sgt->nents;
+
+	data = kmalloc(sizeof(*data) + plen, GFP_KERNEL);
+	if (!data) {
+		err = -ENOMEM;
+		goto unmap_dma_buf;
+	}
+
+	data->vdbuf = vdbuf;
+	desc = &data->desc;
+	desc->subop = udesc->subop;
+	desc->type = udesc->type;
+	desc->len = sizeof(*desc) + plen;
+	payload = (struct vsock_shmem_desc_payload_dma_buf *)desc->payload;
+	payload->nents = sgt->nents;
+	sgs = payload->sgs;
+
+	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+		sgs[i].addr = sg_dma_address(sg);
+		sgs[i].len = sg_dma_len(sg);
+	}
+
+	err = vsk->transport->send_shmem(vsk, desc);
+	if (err < 0)
+		goto free_data;
+
+	old = xa_store(&vsock_shmem_xa, udesc->fd, data, GFP_KERNEL);
+	if (xa_is_err(old)) {
+		err = xa_err(old);
+		goto free_data;
+	}
+
+	/* Token used previously ? */
+	if (old)
+		kfree(old);
+
+	return 0;
+
+free_data:
+	kfree(data);
+unmap_dma_buf:
+	vsk->transport->unmap_dma_buf(vdbuf);
+free_dmabuf:
+	dma_buf_put(dmabuf);
+	return err;
+}
+
+static int vsock_sendmsg_shmem_dmabuf_unmap(struct vsock_sock *vsk,
+					    struct vsock_shmem_user_desc *udesc)
+{
+	struct vsock_shmem_dbuf *data;
+	int err;
+
+	if (!vsk->transport->unmap_dma_buf)
+		return -EOPNOTSUPP;
+
+	data = xa_erase(&vsock_shmem_xa, udesc->fd);
+	if (!data)
+		return -ENODEV;
+
+	data->desc.subop = udesc->subop;
+	err = vsk->transport->send_shmem(vsk, &data->desc);
+
+	vsk->transport->unmap_dma_buf(data->vdbuf);
+	dma_buf_put(data->vdbuf->dmabuf);
+	kfree(data);
+	return err;
+}
+
 static int vsock_sendmsg_shmem_dmabuf(struct vsock_sock *vsk,
 				      struct vsock_shmem_user_desc *udesc)
 {
-	struct dma_buf *dbuf;
-	int err;
-
-	if (udesc->subop != VSOCK_SHMEM_SUBOP_OFFER &&
-	    udesc->subop != VSOCK_SHMEM_SUBOP_RECLAIM)
+	if (udesc->subop == VSOCK_SHMEM_SUBOP_OFFER)
+		return vsock_sendmsg_shmem_dmabuf_map(vsk, udesc);
+	else if (udesc->subop == VSOCK_SHMEM_SUBOP_RECLAIM)
+		return vsock_sendmsg_shmem_dmabuf_unmap(vsk, udesc);
+	else
 		return -EINVAL;
-
-	/* Allocate a big enough descriptor */
-	struct vsock_shmem_desc *desc __free(kfree) =
-		kmalloc(sizeof(*desc) + VSOCK_SHMEM_PAYLOAD_SIZE_MAX,
-			GFP_KERNEL);
-	if (!desc)
-		return -ENOMEM;
-
-	/* The fd must belong to a dma-buf */
-	dbuf = dma_buf_get(udesc->fd);
-	if (IS_ERR(dbuf))
-		return PTR_ERR(dbuf);
-
-	if (!dbuf->ops->shmem_data) {
-		err = -EOPNOTSUPP;
-		goto free_dbuf;
-	}
-
-	desc->subop = udesc->subop;
-
-	/* Get shmem metadata in `desc` from dmabuf */
-	err = dbuf->ops->shmem_data(dbuf, desc);
-	if (err)
-		goto free_dbuf;
-
-	/* send SHMEM control pkt (out-of-band) */
-	err = vsk->transport->send_shmem(vsk, desc);
-	if (err < 0)
-		goto free_dbuf;
-
-	err = 0;
-
-free_dbuf:
-	dma_buf_put(dbuf);
-	return err;
 }
 
 static int vsock_sendmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)

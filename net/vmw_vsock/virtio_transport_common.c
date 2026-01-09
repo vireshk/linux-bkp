@@ -561,8 +561,7 @@ static int virtio_transport_receive_shmem(struct vsock_sock *vsk,
 	struct vsock_shmem_desc *desc;
 	int err;
 
-	if (size < sizeof(*desc) ||
-	    size > sizeof(*desc) + VSOCK_SHMEM_PAYLOAD_SIZE_MAX)
+	if (size <= sizeof(*desc))
 		return -EINVAL;
 
 	desc = kmalloc(size, GFP_KERNEL);
