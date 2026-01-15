@@ -28,49 +28,6 @@ static int virtio_msg_dma_supported(struct device *dev, u64 mask)
 	return mask == DMA_BIT_MASK(64);
 }
 
-static void virtio_msg_dma_unmap_sg(struct device *dev, struct scatterlist *sg,
-				    int nents, enum dma_data_direction dir,
-				    unsigned long attrs)
-{
-	struct scatterlist *s;
-	unsigned int i;
-
-	if (WARN_ON(dir == DMA_NONE))
-		return;
-
-	for_each_sg(sg, s, nents, i)
-		dev->dma_ops->unmap_page(dev, s->dma_address, sg_dma_len(s),
-					 dir, attrs);
-}
-
-static int virtio_msg_dma_map_sg(struct device *dev, struct scatterlist *sg,
-				 int nents, enum dma_data_direction dir,
-				 unsigned long attrs)
-{
-	struct scatterlist *s;
-	unsigned int i;
-
-	if (WARN_ON(dir == DMA_NONE))
-		return -EINVAL;
-
-	for_each_sg(sg, s, nents, i) {
-		s->dma_address = dev->dma_ops->map_page(dev, sg_page(s),
-				s->offset, s->length, dir, attrs);
-		if (s->dma_address == DMA_MAPPING_ERROR)
-			goto out;
-
-		sg_dma_len(s) = s->length;
-	}
-
-	return nents;
-
-out:
-	virtio_msg_dma_unmap_sg(dev, sg, i, dir, attrs | DMA_ATTR_SKIP_CPU_SYNC);
-	sg_dma_len(sg) = 0;
-
-	return -EIO;
-}
-
 /* Reserved memory */
 static void *virtio_msg_dma_alloc_rmem(struct device *dev, size_t size,
 				       dma_addr_t *dma_handle, gfp_t gfp,
@@ -97,18 +54,19 @@ static void virtio_msg_dma_free_rmem(struct device *dev, size_t size,
 				     void *vaddr, dma_addr_t dma_handle,
 				     unsigned long attrs)
 {
-	size_t n_pages = PFN_UP(size);
 	int ret;
 
-	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev), &dma_handle, n_pages);
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev), &dma_handle);
 	if (ret)
 		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
 
-	dma_direct_free(dev, n_pages << PAGE_SHIFT, vaddr, dma_handle, attrs);
+	dma_direct_free(dev, PFN_UP(size) << PAGE_SHIFT, vaddr, dma_handle, attrs);
 }
 
-static dma_addr_t virtio_msg_dma_map_page_rmem(struct device *dev, struct page *page,
-					       unsigned long offset, size_t size,
+static dma_addr_t virtio_msg_dma_map_page_rmem(struct device *dev,
+					       struct page *page,
+					       unsigned long offset,
+					       size_t size,
 					       enum dma_data_direction dir,
 					       unsigned long attrs)
 {
@@ -138,12 +96,12 @@ static dma_addr_t virtio_msg_dma_map_page_rmem(struct device *dev, struct page *
 	return dma_handle + dma_offset;
 }
 
-static void virtio_msg_dma_unmap_page_rmem(struct device *dev, dma_addr_t dma_handle,
-					   size_t size, enum dma_data_direction dir,
+static void virtio_msg_dma_unmap_page_rmem(struct device *dev,
+					   dma_addr_t dma_handle, size_t size,
+					   enum dma_data_direction dir,
 					   unsigned long attrs)
 {
 	unsigned long dma_offset = offset_in_page(dma_handle);
-	unsigned int n_pages = PFN_UP(dma_offset + size);
 	dma_addr_t swiotlb_dma;
 	int ret;
 
@@ -152,13 +110,59 @@ static void virtio_msg_dma_unmap_page_rmem(struct device *dev, dma_addr_t dma_ha
 
 	dma_handle -= dma_offset;
 
-	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev), &dma_handle, n_pages);
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev), &dma_handle);
 	if (ret)
 		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
 
 	swiotlb_dma = dma_handle + dma_offset;
 	swiotlb_tbl_unmap_single(dev, dma_to_phys(dev, swiotlb_dma), size, dir,
 				 attrs);
+}
+
+static void virtio_msg_dma_unmap_sg_rmem(struct device *dev,
+					 struct scatterlist *sgl,
+					 int nents, enum dma_data_direction dir,
+					 unsigned long attrs)
+{
+	struct scatterlist *sg;
+	unsigned int i;
+
+	if (WARN_ON(dir == DMA_NONE))
+		return;
+
+	for_each_sg(sgl, sg, nents, i) {
+		virtio_msg_dma_unmap_page_rmem(dev, sg->dma_address,
+					       sg_dma_len(sg), dir, attrs);
+	}
+}
+
+static int virtio_msg_dma_map_sg_rmem(struct device *dev,
+				      struct scatterlist *sgl,
+				      int nents, enum dma_data_direction dir,
+				      unsigned long attrs)
+{
+	struct scatterlist *sg;
+	unsigned int i;
+
+	if (WARN_ON(dir == DMA_NONE))
+		return -EINVAL;
+
+	for_each_sg(sgl, sg, nents, i) {
+		sg->dma_address = virtio_msg_dma_map_page_rmem(dev, sg_page(sg),
+				sg->offset, sg->length, dir, attrs);
+		if (sg->dma_address == DMA_MAPPING_ERROR)
+			goto out;
+
+		sg_dma_len(sg) = sg->length;
+	}
+
+	return nents;
+
+out:
+	virtio_msg_dma_unmap_sg_rmem(dev, sgl, i, dir, attrs | DMA_ATTR_SKIP_CPU_SYNC);
+	sg_dma_len(sgl) = 0;
+
+	return -EIO;
 }
 
 const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops = {
@@ -170,8 +174,8 @@ const struct dma_map_ops virtio_msg_ffa_rmem_dma_ops = {
 	.get_sgtable = dma_common_get_sgtable,
 	.map_page = virtio_msg_dma_map_page_rmem,
 	.unmap_page = virtio_msg_dma_unmap_page_rmem,
-	.map_sg = virtio_msg_dma_map_sg,
-	.unmap_sg = virtio_msg_dma_unmap_sg,
+	.map_sg = virtio_msg_dma_map_sg_rmem,
+	.unmap_sg = virtio_msg_dma_unmap_sg_rmem,
 	.dma_supported = virtio_msg_dma_supported,
 };
 
@@ -190,10 +194,10 @@ int virtio_msg_ffa_dma_init(void)
 	return 0;
 }
 
-/* DMA HEAP */
-static void *virtio_msg_dma_alloc_heap(struct device *dev, size_t size,
-				       dma_addr_t *dma_handle, gfp_t gfp,
-				       unsigned long attrs)
+/* Device OPs */
+static void *virtio_msg_dma_alloc_dev(struct device *dev, size_t size,
+				      dma_addr_t *dma_handle, gfp_t gfp,
+				      unsigned long attrs)
 {
 	size_t n_pages = PFN_UP(size);
 	void *vaddr;
@@ -213,24 +217,24 @@ static void *virtio_msg_dma_alloc_heap(struct device *dev, size_t size,
 	return vaddr;
 }
 
-static void virtio_msg_dma_free_heap(struct device *dev, size_t size,
-				     void *vaddr, dma_addr_t dma_handle,
-				     unsigned long attrs)
+static void virtio_msg_dma_free_dev(struct device *dev, size_t size,
+				    void *vaddr, dma_addr_t dma_handle,
+				    unsigned long attrs)
 {
-	size_t n_pages = PFN_UP(size);
 	int ret;
 
-	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle, n_pages);
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle);
 	if (ret)
 		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
 
 	free_pages((unsigned long)vaddr, get_order(size));
 }
 
-static dma_addr_t virtio_msg_dma_map_page_heap(struct device *dev, struct page *page,
-					 unsigned long offset, size_t size,
-					 enum dma_data_direction dir,
-					 unsigned long attrs)
+static dma_addr_t virtio_msg_dma_map_page_dev(struct device *dev,
+					      struct page *page,
+					      unsigned long offset, size_t size,
+					      enum dma_data_direction dir,
+					      unsigned long attrs)
 {
 	dma_addr_t dma_handle = page_to_phys(page);
 	size_t n_pages = PFN_UP(offset + size);
@@ -245,12 +249,12 @@ static dma_addr_t virtio_msg_dma_map_page_heap(struct device *dev, struct page *
 	return dma_handle + offset;
 }
 
-static void virtio_msg_dma_unmap_page_heap(struct device *dev, dma_addr_t dma_handle,
-				     size_t size, enum dma_data_direction dir,
-				     unsigned long attrs)
+static void virtio_msg_dma_unmap_page_dev(struct device *dev,
+					  dma_addr_t dma_handle, size_t size,
+					  enum dma_data_direction dir,
+					  unsigned long attrs)
 {
 	unsigned long dma_offset = offset_in_page(dma_handle);
-	unsigned int n_pages = PFN_UP(dma_offset + size);
 	int ret;
 
 	if (WARN_ON(dir == DMA_NONE))
@@ -258,21 +262,60 @@ static void virtio_msg_dma_unmap_page_heap(struct device *dev, dma_addr_t dma_ha
 
 	dma_handle -= dma_offset;
 
-	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle, n_pages);
+	ret = vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle);
 	if (ret)
 		dev_err(dev, "%s: Failed to unshare area: %d", __func__, ret);
 }
 
-const struct dma_map_ops virtio_msg_ffa_heap_dma_ops = {
-	.alloc = virtio_msg_dma_alloc_heap,
-	.free = virtio_msg_dma_free_heap,
+static int virtio_msg_dma_map_sg_dev(struct device *dev, struct scatterlist *sgl,
+				     int nents, enum dma_data_direction dir,
+				     unsigned long attrs)
+{
+	struct scatterlist *sg;
+	dma_addr_t dma_handle, offset = 0;
+	unsigned int i;
+	int ret;
+
+	if (WARN_ON(dir == DMA_NONE))
+		return -EINVAL;
+
+	ret = vmsg_ffa_bus_area_share_sgl(to_ffa_dev(dev->parent), sgl, nents,
+						     &dma_handle);
+	if (ret)
+		return ret;
+
+	for_each_sg(sgl, sg, nents, i) {
+		sg->dma_address = dma_handle + offset;
+		sg_dma_len(sg) = sg->length;
+		offset += ALIGN(sg->offset + sg->length, PAGE_SIZE);
+	}
+
+	return nents;
+}
+
+static void virtio_msg_dma_unmap_sg_dev(struct device *dev,
+					struct scatterlist *sgl, int nents,
+					enum dma_data_direction dir,
+					unsigned long attrs)
+{
+	dma_addr_t dma_handle = sgl->dma_address;
+
+	if (WARN_ON(dir == DMA_NONE))
+		return;
+
+	vmsg_ffa_bus_area_unshare(to_ffa_dev(dev->parent), &dma_handle);
+}
+
+const struct dma_map_ops virtio_msg_ffa_dev_dma_ops = {
+	.alloc = virtio_msg_dma_alloc_dev,
+	.free = virtio_msg_dma_free_dev,
 	.alloc_pages_op = dma_common_alloc_pages,
 	.free_pages = dma_common_free_pages,
 	.mmap = dma_common_mmap,
 	.get_sgtable = dma_common_get_sgtable,
-	.map_page = virtio_msg_dma_map_page_heap,
-	.unmap_page = virtio_msg_dma_unmap_page_heap,
-	.map_sg = virtio_msg_dma_map_sg,
-	.unmap_sg = virtio_msg_dma_unmap_sg,
+	.map_page = virtio_msg_dma_map_page_dev,
+	.unmap_page = virtio_msg_dma_unmap_page_dev,
+	.map_sg = virtio_msg_dma_map_sg_dev,
+	.unmap_sg = virtio_msg_dma_unmap_sg_dev,
 	.dma_supported = virtio_msg_dma_supported,
 };
