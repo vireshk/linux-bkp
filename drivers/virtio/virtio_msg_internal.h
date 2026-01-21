@@ -101,9 +101,14 @@ extern const struct dma_map_ops virtio_msg_ffa_dev_dma_ops;
 
 int vmsg_ffa_bus_area_share_sgl(struct ffa_device *ffa_dev,
 				struct scatterlist *sgl, int nents,
-				dma_addr_t *dma_handle);
+				dma_addr_t *dma_handle,
+				enum ffa_mem_op_type op_type);
+int vmsg_ffa_bus_area_share_sgl_shmem(struct ffa_device *ffa_dev,
+				      struct scatterlist *sgl, int nents,
+				      dma_addr_t *dma_handle,
+				      u32 shmem_flags);
 int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
-			    size_t n_pages);
+			    size_t n_pages, enum ffa_mem_op_type op_type);
 int vmsg_ffa_bus_area_unshare(struct ffa_device *ffa_dev, dma_addr_t *dma_handle);
 
 int virtio_msg_ffa_dma_init(void);

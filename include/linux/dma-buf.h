@@ -506,6 +506,7 @@ struct dma_buf_attachment {
 	const struct dma_buf_attach_ops *importer_ops;
 	void *importer_priv;
 	void *priv;
+	u32 attach_flags;  /* Attachment-specific flags for device operations */
 };
 
 /**
@@ -582,6 +583,9 @@ static inline bool dma_buf_is_dynamic(struct dma_buf *dmabuf)
 #ifdef CONFIG_DMA_SHARED_BUFFER
 struct dma_buf_attachment *dma_buf_attach(struct dma_buf *dmabuf,
 					  struct device *dev);
+struct dma_buf_attachment *dma_buf_attach_with_flags(struct dma_buf *dmabuf,
+						     struct device *dev,
+						     u32 flags);
 struct dma_buf_attachment *
 dma_buf_dynamic_attach(struct dma_buf *dmabuf, struct device *dev,
 		       const struct dma_buf_attach_ops *importer_ops,

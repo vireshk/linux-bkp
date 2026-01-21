@@ -202,12 +202,21 @@ struct vsock_transport {
 	bool (*msgzerocopy_allow)(void);
 
 	/* Optional transport hook to map/unmap DMA buf with the device */
-	struct vsock_dma_buf * (*map_dma_buf)(struct dma_buf *dmabuf);
+	struct vsock_dma_buf * (*map_dma_buf)(struct dma_buf *dmabuf, u32 flags);
 	void (*unmap_dma_buf)(struct vsock_dma_buf *dbuf);
 
 	/* Optional transport hook to send a SHMEM control pkt */
 	int (*send_shmem)(struct vsock_sock *vsk,
 			  struct vsock_shmem_desc *desc);
+
+	/* Optional transport hook to share/lend memory for SHMEM with semantics */
+	int (*share_shmem)(struct vsock_sock *vsk,
+			   struct scatterlist *sgl, int nents,
+			   dma_addr_t *dma_handle, u32 shmem_flags);
+
+	/* Optional transport hook to interpret SHMEM sharing semantics */
+	/* Returns FFA operation type (FFA_MEM_SHARE or FFA_MEM_LEND) or other transport-specific value */
+	int (*get_shmem_op_type)(u32 flags);
 };
 
 /**** CORE ****/

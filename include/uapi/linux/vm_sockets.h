@@ -224,11 +224,16 @@ struct sockaddr_vm {
 #define VSOCK_SHMEM_TYPE_LB		0
 #define VSOCK_SHMEM_TYPE_FFA		1
 
+/* SHMEM sharing semantics flags */
+#define VSOCK_SHMEM_FLAG_SHARE		0  /* Default: share memory */
+#define VSOCK_SHMEM_FLAG_LEND		(1 << 0)  /* Lend memory (ownership transferred) */
+
 /* Userspace-visible descriptor transferred as ancillary cmsg payload */
 struct vsock_shmem_user_desc {
 	__u32 subop; /*VSOCK_SHMEM_SUBOP_* */
 	__u32 type; /* VSOCK_SHMEM_TYPE_* */
 	__s32 fd;
+	__u32 flags; /* VSOCK_SHMEM_FLAG_* - share vs lend semantics */
 } __attribute__((packed));
 
 /* Descriptor carried as payload for VIRTIO_VSOCK_OP_SHMEM control packet */
@@ -236,6 +241,7 @@ struct vsock_shmem_desc {
 	__u32 subop; /* VSOCK_SHMEM_SUBOP_* */
 	__u32 type; /* VSOCK_SHMEM_TYPE_* */
 	__u32 len; /* Length of this descriptor including payload */
+	__u32 flags; /* VSOCK_SHMEM_FLAG_* - share vs lend semantics */
 	__u8 payload[]; /* SHMEM Type specific metadata */
 } __attribute__((packed));
 

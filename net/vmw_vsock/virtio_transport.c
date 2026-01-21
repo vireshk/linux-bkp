@@ -23,6 +23,11 @@
 #include <linux/mutex.h>
 #include <net/af_vsock.h>
 
+#if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+#include <linux/arm_ffa.h>
+#include "../../drivers/virtio/virtio_msg_internal.h"
+#endif
+
 MODULE_IMPORT_NS("DMA_BUF");
 
 static struct workqueue_struct *virtio_vsock_workqueue;
@@ -542,7 +547,7 @@ static bool virtio_transport_msgzerocopy_allow(void)
 
 static bool virtio_transport_seqpacket_allow(u32 remote_cid);
 
-static struct vsock_dma_buf *virtio_transport_map_dma_buf(struct dma_buf *dmabuf)
+static struct vsock_dma_buf *virtio_transport_map_dma_buf(struct dma_buf *dmabuf, u32 flags)
 {
 	struct virtio_vsock *vsock;
 	struct vsock_dma_buf *dbuf;
@@ -564,13 +569,17 @@ static struct vsock_dma_buf *virtio_transport_map_dma_buf(struct dma_buf *dmabuf
 		goto free_dbuf;
 	}
 
-	dbuf->attach = dma_buf_attach(dmabuf, dev);
+	dbuf->attach = dma_buf_attach_with_flags(dmabuf, dev, flags);
 	if (IS_ERR(dbuf->attach)) {
 		ret = PTR_ERR(dbuf->attach);
 		goto device_put;
 	}
 
+	/* Map the dma-buf attachment. The actual SHMEM sharing (via share_shmem hook)
+	 * happens before this in the vsock layer, so here we just get physical addresses.
+	 */
 	dbuf->sg_table = dma_buf_map_attachment_unlocked(dbuf->attach, DMA_BIDIRECTIONAL);
+
 	if (IS_ERR(dbuf->sg_table)) {
 		ret = PTR_ERR(dbuf->sg_table);
 		goto detach;
@@ -596,6 +605,46 @@ static void virtio_transport_unmap_dma_buf(struct vsock_dma_buf *dbuf)
 	put_device(dbuf->dev);
 	kfree(dbuf);
 }
+
+#if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+/* Share or lend memory for SHMEM via FFA with user-specified semantics
+ * 
+ * This is a device-agnostic wrapper that delegates to the FFA device's
+ * share_sgl_shmem callback, which handles the FFA-specific logic.
+ */
+static int virtio_transport_share_shmem_ffa(struct vsock_sock *vsk,
+					    struct scatterlist *sgl, int nents,
+					    dma_addr_t *dma_handle, u32 shmem_flags)
+{
+	struct virtio_vsock *vsock;
+	struct device *parent_dev;
+	struct virtio_msg_ffa_device *vmfdev;
+	int ret;
+
+	/* Get the virtio_vsock from the vsock socket context */
+	rcu_read_lock();
+	vsock = rcu_dereference(the_virtio_vsock);
+	if (!vsock) {
+		rcu_read_unlock();
+		return -ENODEV;
+	}
+
+	parent_dev = vsock->vdev->dev.parent;
+	rcu_read_unlock();
+
+	if (!parent_dev)
+		return -ENODEV;
+
+	/* Get the FFA device driver data (device-specific ops holder) */
+	vmfdev = ffa_dev_get_drvdata(to_ffa_dev(parent_dev));
+	if (!vmfdev || !vmfdev->share_sgl_shmem)
+		return -ENODEV;
+
+	/* Delegate to the FFA device's SHMEM sharing callback */
+	ret = vmfdev->share_sgl_shmem(vmfdev, sgl, nents, dma_handle, shmem_flags);
+	return ret;
+}
+#endif
 
 static struct virtio_transport virtio_transport = {
 	.transport = {
@@ -647,6 +696,9 @@ static struct virtio_transport virtio_transport = {
 		.map_dma_buf              = virtio_transport_map_dma_buf,
 		.unmap_dma_buf            = virtio_transport_unmap_dma_buf,
 		.send_shmem               = virtio_transport_send_shmem,
+#if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
+		.share_shmem              = virtio_transport_share_shmem_ffa,
+#endif
 
 		.read_skb = virtio_transport_read_skb,
 	},

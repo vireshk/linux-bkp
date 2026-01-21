@@ -2106,6 +2106,10 @@ static int vsock_sendmsg_shmem_lb(struct vsock_sock *vsk,
 	if (udesc->type != VSOCK_SHMEM_TYPE_LB)
 		return -EINVAL;
 
+	/* Loopback transport doesn't support lend semantics */
+	if (udesc->flags & VSOCK_SHMEM_FLAG_LEND)
+		return -EINVAL;
+
 	if (udesc->subop != VSOCK_SHMEM_SUBOP_OFFER) {
 		/*
 		 * Reject invalid values for subop or
@@ -2141,6 +2145,7 @@ static int vsock_sendmsg_shmem_lb(struct vsock_sock *vsk,
 	desc->subop = udesc->subop;
 	desc->type = udesc->type;
 	desc->len = len;
+	desc->flags = VSOCK_SHMEM_FLAG_SHARE;  /* Loopback always shares, doesn't support lend */
 
 	/* send SHMEM control pkt (out-of-band) */
 	err = vsk->transport->send_shmem(vsk, desc);
@@ -2179,7 +2184,7 @@ static int vsock_sendmsg_shmem_dmabuf_map(struct vsock_sock *vsk,
 	if (IS_ERR(dmabuf))
 		return PTR_ERR(dmabuf);
 
-	vdbuf = vsk->transport->map_dma_buf(dmabuf);
+	vdbuf = vsk->transport->map_dma_buf(dmabuf, udesc->flags);
 	if (IS_ERR(vdbuf)) {
 		err = PTR_ERR(vdbuf);
 		goto free_dmabuf;
@@ -2205,6 +2210,7 @@ static int vsock_sendmsg_shmem_dmabuf_map(struct vsock_sock *vsk,
 	desc->subop = udesc->subop;
 	desc->type = udesc->type;
 	desc->len = sizeof(*desc) + plen;
+	desc->flags = udesc->flags;  /* Propagate share/lend flag from userspace */
 	payload = (struct vsock_shmem_desc_payload_dma_buf *)desc->payload;
 	payload->nents = sgt->nents;
 	sgs = payload->sgs;
@@ -2212,6 +2218,17 @@ static int vsock_sendmsg_shmem_dmabuf_map(struct vsock_sock *vsk,
 	for_each_sg(sgt->sgl, sg, sgt->nents, i) {
 		sgs[i].addr = sg_dma_address(sg);
 		sgs[i].len = sg_dma_len(sg);
+	}
+
+	/* If transport supports SHMEM-specific sharing (e.g., FFA with lend semantics),
+	 * call it to perform the actual share/lend operation before sending the descriptor
+	 */
+	if (vsk->transport->share_shmem) {
+		dma_addr_t dma_handle = sgt->sgl->dma_address;
+		err = vsk->transport->share_shmem(vsk, sgt->sgl, sgt->nents,
+						  &dma_handle, udesc->flags);
+		if (err < 0)
+			goto free_data;
 	}
 
 	err = vsk->transport->send_shmem(vsk, desc);
@@ -2290,6 +2307,10 @@ static int vsock_sendmsg_shmem(struct vsock_sock *vsk, struct msghdr *msg)
 		memcpy(&udesc, CMSG_DATA(cmsg), sizeof(udesc));
 
 		if (udesc.fd < 0)
+			return -EINVAL;
+
+		/* Validate flags - only SHARE and LEND are supported */
+		if (udesc.flags & ~VSOCK_SHMEM_FLAG_LEND)
 			return -EINVAL;
 
 		if (transport == transport_local)

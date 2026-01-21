@@ -27,8 +27,17 @@
 #include <linux/types.h>
 #include <linux/virtio.h>
 #include <uapi/linux/virtio_msg_ffa.h>
+#include <uapi/linux/vm_sockets.h>
 
 #include "virtio_msg_internal.h"
+
+/* Convert vsock SHMEM flags to FFA memory operation type */
+static enum ffa_mem_op_type vsock_shmem_flags_to_ffa_op_type(u32 flags)
+{
+	if (flags & VSOCK_SHMEM_FLAG_LEND)
+		return FFA_MEM_LEND;
+	return FFA_MEM_SHARE;
+}
 
 struct virtio_msg_indirect_data {
 	struct completion completion;
@@ -47,6 +56,7 @@ struct shared_area {
 	dma_addr_t dma_handle;
 	size_t n_pages;
 	u32 count;
+	enum ffa_mem_op_type op_type;  /* FFA_MEM_SHARE or FFA_MEM_LEND */
 	struct list_head list;
 };
 
@@ -60,6 +70,11 @@ struct virtio_msg_ffa_device {
 		    struct virtio_msg *request,
 		    struct virtio_msg *response,
 		    struct virtio_msg_indirect_data *idata);
+	/* SHMEM-aware memory sharing with semantics (SHARE vs LEND) */
+	int (*share_sgl_shmem)(struct virtio_msg_ffa_device *vmfdev,
+			      struct scatterlist *sgl, int nents,
+			      dma_addr_t *dma_handle,
+			      u32 shmem_flags);
 	struct task_struct *used_event_task;
 	struct virtio_msg_user_device vmudev;
 	struct completion completion;
@@ -457,7 +472,8 @@ static unsigned int sg_npages(struct scatterlist *sgl, int nents)
 static int vmsg_ffa_bus_area_share_sgl_unlocked(struct ffa_device *ffa_dev,
 						struct scatterlist *sgl,
 						size_t n_pages,
-						dma_addr_t *dma_handle)
+						dma_addr_t *dma_handle,
+						 enum ffa_mem_op_type op_type)
 {
 	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
 	struct ffa_mem_region_attributes mem_attr = {
@@ -493,7 +509,24 @@ static int vmsg_ffa_bus_area_share_sgl_unlocked(struct ffa_device *ffa_dev,
 		goto free_area;
 	area->id = ret;
 
-	ret = ffa_dev->ops->mem_ops->memory_share(&args);
+	switch (op_type) {
+	case FFA_MEM_LEND:
+		if (!ffa_dev->ops->mem_ops->memory_lend) {
+			ret = -EOPNOTSUPP;
+			goto free_ida;
+		}
+		ret = ffa_dev->ops->mem_ops->memory_lend(&args);
+		req_payload->attr = cpu_to_le32(VIRTIO_MSG_FFA_SHMEM_ATTR_LEND);
+		break;
+	case FFA_MEM_SHARE:
+	default:
+		ret = ffa_dev->ops->mem_ops->memory_share(&args);
+		req_payload->attr = cpu_to_le32(VIRTIO_MSG_FFA_SHMEM_ATTR_SHARE);
+		break;
+	}
+
+	/* Track the operation type for proper cleanup */
+	area->op_type = op_type;
 
 	if (ret)
 		goto free_ida;
@@ -533,20 +566,22 @@ free_area:
 
 int vmsg_ffa_bus_area_share_sgl(struct ffa_device *ffa_dev,
 				struct scatterlist *sgl, int nents,
-				dma_addr_t *dma_handle)
+				dma_addr_t *dma_handle,
+				unsigned long atts)
 {
 	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
 	size_t n_pages = sg_npages(sgl, nents);
 
 	guard(mutex)(&vmfdev->lock);
 
-	return vmsg_ffa_bus_area_share_sgl_unlocked(ffa_dev, sgl, n_pages, dma_handle);
+	return vmsg_ffa_bus_area_share_sgl_unlocked(ffa_dev, sgl, n_pages, dma_handle, op_type);
 }
 EXPORT_SYMBOL_GPL(vmsg_ffa_bus_area_share_sgl);
 
 static int vmsg_ffa_bus_area_share_single(struct ffa_device *ffa_dev,
 					  dma_addr_t *dma_handle,
-					  size_t n_pages)
+					  size_t n_pages,
+					  unsigned long atts)
 {
 	struct page *page = phys_to_page(*dma_handle);
 	struct sg_table sgt;
@@ -565,13 +600,13 @@ static int vmsg_ffa_bus_area_share_single(struct ffa_device *ffa_dev,
 	if (ret)
 		return ret;
 
-	ret = vmsg_ffa_bus_area_share_sgl_unlocked(ffa_dev, sgt.sgl, n_pages, dma_handle);
+	ret = vmsg_ffa_bus_area_share_sgl_unlocked(ffa_dev, sgt.sgl, n_pages, dma_handle, op_type);
 	sg_free_table(&sgt);
 	return ret;
 }
 
 int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
-			    size_t n_pages)
+			    size_t n_pages, unsigned long atts)
 {
 	struct virtio_msg_ffa_device *vmfdev = ffa_dev->dev.driver_data;
 	struct shared_area *area;
@@ -582,6 +617,7 @@ int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
 	 * If "restricted-dma-pool" is supported, we should have already mapped
 	 * a big enough area at initialization time. Make sure that "dma_handle"
 	 * lies within that and update dma_handle properly.
+	 * Note: Only reuse existing area if it was shared (not lent)
 	 */
 	if (vmfdev->rmem_dma_handle) {
 		area = list_last_entry(&vmfdev->area_list, struct shared_area,
@@ -596,9 +632,33 @@ int vmsg_ffa_bus_area_share(struct ffa_device *ffa_dev, dma_addr_t *dma_handle,
 		}
 	}
 
-	return vmsg_ffa_bus_area_share_single(ffa_dev, dma_handle, n_pages);
+	return vmsg_ffa_bus_area_share_single(ffa_dev, dma_handle, n_pages, attrs);
 }
 EXPORT_SYMBOL_GPL(vmsg_ffa_bus_area_share);
+
+/* Share or lend memory for vsock SHMEM with user-specified semantics */
+int vmsg_ffa_bus_area_share_sgl_shmem(struct ffa_device *ffa_dev,
+				      struct scatterlist *sgl, int nents,
+				      dma_addr_t *dma_handle,
+				      u32 shmem_flags)
+{
+	/* Convert vsock SHMEM flags to FFA operation type */
+	enum ffa_mem_op_type op_type = vsock_shmem_flags_to_ffa_op_type(shmem_flags);
+	
+	/* Call the existing function with the determined operation type */
+	return vmsg_ffa_bus_area_share_sgl(ffa_dev, sgl, nents, dma_handle, op_type);
+}
+EXPORT_SYMBOL_GPL(vmsg_ffa_bus_area_share_sgl_shmem);
+
+/* Device callback for SHMEM-aware memory sharing */
+static int vmsg_ffa_share_sgl_shmem(struct virtio_msg_ffa_device *vmfdev,
+				    struct scatterlist *sgl, int nents,
+				    dma_addr_t *dma_handle,
+				    u32 shmem_flags)
+{
+	return vmsg_ffa_bus_area_share_sgl_shmem(vmfdev->ffa_dev, sgl, nents,
+						 dma_handle, shmem_flags);
+}
 
 static int vmsg_ffa_bus_area_unshare_single(struct ffa_device *ffa_dev,
 		struct shared_area *area)
@@ -736,7 +796,8 @@ static int virtio_msg_ffa_rmem_init(struct virtio_msg_ffa_device *vmfdev)
 #if IS_REACHABLE(CONFIG_VIRTIO_MSG_FFA_DMA_OPS)
 	dma_handle = vmfdev->rmem->base;
 	ret = vmsg_ffa_bus_area_share(ffa_dev, &dma_handle,
-				      PFN_UP(vmfdev->rmem->size));
+				      PFN_UP(vmfdev->rmem->size),
+				      0);
 	if (ret) {
 		of_reserved_mem_device_release(dev);
 		return ret;
@@ -784,6 +845,10 @@ static int virtio_msg_ffa_probe(struct ffa_device *ffa_dev)
 		dev_err(dev, "Direct or Indirect messages not supported\n");
 		return -EINVAL;
 	}
+
+	/* All FFA devices support SHMEM-aware sharing */
+	vmfdev->share_sgl_shmem = vmsg_ffa_share_sgl_shmem;
+
 	vmfdev->ffa_dev = ffa_dev;
 	vmfdev->msg_size = VIRTIO_MSG_FFA_BUS_MSG_SIZE;
 	vmfdev->rmem = ERR_PTR(-ENOMEM);

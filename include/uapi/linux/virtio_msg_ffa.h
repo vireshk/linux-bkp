@@ -63,6 +63,15 @@
 #define VIRTIO_MSG_FFA_RESULT_ERROR			(1 << 0)
 #define VIRTIO_MSG_FFA_RESULT_BUSY			(1 << 1)
 
+/* FFA memory operation types */
+enum ffa_mem_op_type {
+	FFA_MEM_SHARE = 0,
+	FFA_MEM_LEND = 1,
+};
+
+#define VIRTIO_MSG_FFA_SHMEM_ATTR_SHARE			(0)
+#define VIRTIO_MSG_FFA_SHMEM_ATTR_LEND			(1 << 0)
+
 /* Message payload format */
 
 struct bus_ffa_version {

@@ -41,7 +41,8 @@ static void *virtio_msg_dma_alloc_rmem(struct device *dev, size_t size,
 	if (!vaddr)
 		return NULL;
 
-	ret = vmsg_ffa_bus_area_share(to_ffa_dev(dev), dma_handle, n_pages);
+	/* Default to FFA_MEM_SHARE for DMA operations */
+	ret = vmsg_ffa_bus_area_share(to_ffa_dev(dev), dma_handle, n_pages, FFA_MEM_SHARE);
 	if (ret) {
 		dma_direct_free(dev, size, vaddr, *dma_handle, attrs);
 		return NULL;
@@ -84,7 +85,7 @@ static dma_addr_t virtio_msg_dma_map_phys_rmem(struct device *dev,
 
 	dma_offset = offset_in_page(swiotlb_dma);
 	dma_handle = swiotlb_dma - dma_offset;
-	if (vmsg_ffa_bus_area_share(to_ffa_dev(dev), &dma_handle, n_pages)) {
+	if (vmsg_ffa_bus_area_share(to_ffa_dev(dev), &dma_handle, n_pages, FFA_MEM_SHARE)) {
 		swiotlb_tbl_unmap_single(dev, dma_to_phys(dev, swiotlb_dma),
 					 size, dir, attrs);
 		return DMA_MAPPING_ERROR;
@@ -206,7 +207,7 @@ static void *virtio_msg_dma_alloc_dev(struct device *dev, size_t size,
 		return NULL;
 	*dma_handle = virt_to_phys(vaddr);
 
-	ret = vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), dma_handle, n_pages);
+	ret = vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), dma_handle, n_pages, FFA_MEM_SHARE);
 	if (ret) {
 		dma_direct_free(dev, size, vaddr, *dma_handle, attrs);
 		return NULL;
@@ -242,7 +243,7 @@ static dma_addr_t virtio_msg_dma_map_phys_dev(struct device *dev,
 
 	phys -= offset;
 
-	if (vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), &phys, n_pages))
+	if (vmsg_ffa_bus_area_share(to_ffa_dev(dev->parent), &phys, n_pages, FFA_MEM_SHARE))
 		return DMA_MAPPING_ERROR;
 
 	return phys + offset;
@@ -279,7 +280,7 @@ static int virtio_msg_dma_map_sg_dev(struct device *dev, struct scatterlist *sgl
 		return -EINVAL;
 
 	ret = vmsg_ffa_bus_area_share_sgl(to_ffa_dev(dev->parent), sgl, nents,
-						     &dma_handle);
+					     &dma_handle, FFA_MEM_SHARE);
 	if (ret)
 		return ret;
 

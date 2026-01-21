@@ -995,6 +995,30 @@ struct dma_buf_attachment *dma_buf_attach(struct dma_buf *dmabuf,
 EXPORT_SYMBOL_NS_GPL(dma_buf_attach, "DMA_BUF");
 
 /**
+ * dma_buf_attach_with_flags - Wrapper for dma_buf_dynamic_attach with flags
+ * @dmabuf:	[in]	buffer to attach device to.
+ * @dev:	[in]	device to be attached.
+ * @flags:	[in]	attachment-specific flags (e.g., for SHMEM semantics).
+ *
+ * Wrapper to call dma_buf_dynamic_attach() for drivers which still use a static
+ * mapping and need to pass attachment-specific flags (e.g., VSOCK_SHMEM_FLAG_SHARE/LEND)
+ * to the device's dma_ops callbacks.
+ */
+struct dma_buf_attachment *dma_buf_attach_with_flags(struct dma_buf *dmabuf,
+						     struct device *dev,
+						     u32 flags)
+{
+	struct dma_buf_attachment *attach;
+
+	attach = dma_buf_dynamic_attach(dmabuf, dev, NULL, NULL);
+	if (!IS_ERR(attach))
+		attach->attach_flags = flags;
+
+	return attach;
+}
+EXPORT_SYMBOL_NS_GPL(dma_buf_attach_with_flags, "DMA_BUF");
+
+/**
  * dma_buf_detach - Remove the given attachment from dmabuf's attachments list
  * @dmabuf:	[in]	buffer to detach from.
  * @attach:	[in]	attachment to be detached; is free'd after this call.
