@@ -186,6 +186,15 @@ config VIRTIO_MSG_BRIDGE
 	  This enables the provisional Linux-to-userspace bridge scaffolding
 	  for /dev/virtio-msg-bridge.
 
+config VIRTIO_MSG_LOOPBACK
+	tristate "Virtio message loopback scaffold"
+	depends on VIRTIO_MSG_TRANSPORT && VIRTIO_MSG_BRIDGE
+	help
+	  This enables a minimal in-kernel loopback base scaffold that wires
+	  virtio-msg transport-provider and bridge-endpoint objects through
+	  public contracts only. Relay, map/mmap, and event data paths remain
+	  deferred to later steps.
+
 config VIRTIO_DMA_SHARED_BUFFER
 	tristate
 	depends on DMA_SHARED_BUFFER

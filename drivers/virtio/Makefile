@@ -7,6 +7,9 @@ obj-$(CONFIG_VIRTIO_MMIO) += virtio_mmio.o
 obj-$(CONFIG_VIRTIO_MSG_TRANSPORT) += virtio_msg_transport.o
 obj-$(CONFIG_VIRTIO_MSG_TRANSPORT) += virtio_msg_bus_dma.o
 obj-$(CONFIG_VIRTIO_MSG_BRIDGE) += virtio_msg_bus_bridge_device.o
+obj-$(CONFIG_VIRTIO_MSG_LOOPBACK) += virtio_msg_loopback.o
+virtio_msg_loopback-y := virtio_msg_loopback_transport.o \
+			 virtio_msg_loopback_bridge.o
 obj-$(CONFIG_VIRTIO_PCI) += virtio_pci.o
 virtio_pci-y := virtio_pci_modern.o virtio_pci_common.o
 virtio_pci-$(CONFIG_VIRTIO_PCI_LEGACY) += virtio_pci_legacy.o
