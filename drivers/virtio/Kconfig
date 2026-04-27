@@ -180,6 +180,14 @@ config VIRTIO_MSG_TRANSPORT
 	  The initial scope covers provider attach/register boundaries plus
 	  blocking device-info, feature, config, and status flow.
 
+config VIRTIO_MSG_BRIDGE
+	tristate "Virtio message userspace bridge"
+	depends on EVENTFD
+	depends on SHMEM
+	help
+	  This enables the provisional Linux-to-userspace bridge scaffolding
+	  for /dev/virtio-msg-bridge.
+
 config VIRTIO_DMA_SHARED_BUFFER
 	tristate
 	depends on DMA_SHARED_BUFFER

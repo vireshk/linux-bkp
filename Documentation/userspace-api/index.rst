@@ -50,6 +50,7 @@ Devices and I/O
    gpio/index
    iommufd
    media/index
+   virtio-message-bridge-user
    dcdbas
    vduse
    isapnp
