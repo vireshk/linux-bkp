@@ -12,6 +12,10 @@ obj-$(CONFIG_VIRTIO_MSG_BUS_DMA_DEVICE_HELPER) += virtio_msg_bus_dma_device_help
 obj-$(CONFIG_VIRTIO_MSG_LOOPBACK) += virtio_msg_loopback.o
 virtio_msg_loopback-y := virtio_msg_loopback_transport.o \
 			 virtio_msg_loopback_bridge.o
+virtio_msg_bus_ffa_common-y := virtio_msg_bus_ffa_common.o
+obj-$(CONFIG_VIRTIO_MSG_FFA_COMMON) += virtio_msg_bus_ffa_common_module.o
+virtio_msg_bus_ffa_common_module-y := $(virtio_msg_bus_ffa_common-y)
+
 obj-$(CONFIG_VIRTIO_PCI) += virtio_pci.o
 virtio_pci-y := virtio_pci_modern.o virtio_pci_common.o
 virtio_pci-$(CONFIG_VIRTIO_PCI_LEGACY) += virtio_pci_legacy.o

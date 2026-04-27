@@ -214,6 +214,19 @@ config VIRTIO_MSG_LOOPBACK
 	  contracts only. Relay request/response, map/mmap, map-event, and
 	  transport event paths are implemented for bridge integration testing.
 
+if ARM_FFA_TRANSPORT && (VIRTIO_MSG_TRANSPORT || VIRTIO_MSG_BRIDGE)
+
+comment "Virtio message bus over FF-A"
+
+config VIRTIO_MSG_FFA_COMMON
+	tristate
+	depends on ARM_FFA_TRANSPORT
+	help
+	  This enables role-neutral FF-A helpers shared by the virtio
+	  message bus driver-binding and device-binding modules.
+
+endif
+
 config VIRTIO_DMA_SHARED_BUFFER
 	tristate
 	depends on DMA_SHARED_BUFFER
