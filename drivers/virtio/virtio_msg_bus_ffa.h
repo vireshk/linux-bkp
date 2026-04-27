@@ -29,8 +29,6 @@ struct device;
 
 #define VIRTIO_MSG_FFA_BUS_NAME			"virtio-msg-ffa"
 #define VIRTIO_MSG_FFA_TX_BUSY_RETRY_MAX		10
-#define VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_BASE_MS	1
-#define VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_MAX_MS		32
 
 enum virtio_msg_ffa_transfer_method {
 	VIRTIO_MSG_FFA_XFER_NONE = 0,
@@ -300,10 +298,6 @@ int virtio_msg_ffa_memory_retrieve(struct ffa_device *fdev,
 				   struct ffa_mem_retrieve_args *args,
 				   void *resp, size_t *resp_len);
 bool virtio_msg_ffa_tx_busy_retry_sleepable(unsigned int *remaining);
-void virtio_msg_ffa_fifo_notify_backoff_reset(u32 *delay_ms);
-u32 virtio_msg_ffa_fifo_notify_backoff_delay(u32 *delay_ms);
-bool virtio_msg_ffa_fifo_notify_backoff_next(u32 *delay_ms,
-					     u32 *next_delay_ms);
 void virtio_msg_ffa_trace_msg(struct device *dev, u16 peer_vm,
 			      const char *dir, const char *path,
 			      const struct virtio_msg *msg, size_t len);

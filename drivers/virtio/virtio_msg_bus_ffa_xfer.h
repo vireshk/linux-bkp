@@ -15,9 +15,15 @@
 #include <linux/bits.h>
 #include <linux/errno.h>
 #include <linux/kconfig.h>
+#include <linux/limits.h>
+#include <linux/string.h>
 #include <linux/types.h>
 
 #include "virtio_msg_bus_ffa.h"
+
+#define VIRTIO_MSG_FFA_NOTIF_ID_MIN			0
+#define VIRTIO_MSG_FFA_NOTIF_ID_MAX			63
+#define VIRTIO_MSG_FFA_NOTIF_ID_INVALID		U16_MAX
 
 enum virtio_msg_ffa_xfer_role_mask {
 	VIRTIO_MSG_FFA_XFER_ROLE_DRIVER = BIT(0),

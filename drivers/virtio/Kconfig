@@ -234,6 +234,17 @@ config VIRTIO_MSG_FFA_XFER_INDIRECT
 
 	  Indirect transfer is the shared bootstrap path.
 
+config VIRTIO_MSG_FFA_XFER_FIFO
+	bool "Virtio message bus FF-A FIFO transfer support"
+	depends on VIRTIO_MSG_FFA_XFER_INDIRECT
+	default y
+	help
+	  Enable FIFO transfer support for the virtio message bus FF-A
+	  bindings.
+
+	  FIFO is a runtime upgrade path and always requires a non-FIFO
+	  bootstrap method.
+
 endif
 
 config VIRTIO_DMA_SHARED_BUFFER

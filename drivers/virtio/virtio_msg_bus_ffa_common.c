@@ -67,44 +67,6 @@ bool virtio_msg_ffa_tx_busy_retry_sleepable(unsigned int *remaining)
 }
 EXPORT_SYMBOL_GPL(virtio_msg_ffa_tx_busy_retry_sleepable);
 
-void virtio_msg_ffa_fifo_notify_backoff_reset(u32 *delay_ms)
-{
-	if (delay_ms)
-		*delay_ms = VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_BASE_MS;
-}
-EXPORT_SYMBOL_GPL(virtio_msg_ffa_fifo_notify_backoff_reset);
-
-u32 virtio_msg_ffa_fifo_notify_backoff_delay(u32 *delay_ms)
-{
-	if (!delay_ms)
-		return VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_BASE_MS;
-	if (!*delay_ms)
-		virtio_msg_ffa_fifo_notify_backoff_reset(delay_ms);
-
-	return *delay_ms;
-}
-EXPORT_SYMBOL_GPL(virtio_msg_ffa_fifo_notify_backoff_delay);
-
-bool virtio_msg_ffa_fifo_notify_backoff_next(u32 *delay_ms,
-					     u32 *next_delay_ms)
-{
-	u32 next_delay;
-
-	if (!delay_ms || !next_delay_ms)
-		return false;
-	if (virtio_msg_ffa_fifo_notify_backoff_delay(delay_ms) >=
-	    VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_MAX_MS)
-		return false;
-
-	next_delay = min_t(u32, *delay_ms << 1,
-			   VIRTIO_MSG_FFA_FIFO_NOTIFY_RETRY_MAX_MS);
-	*delay_ms = next_delay;
-	*next_delay_ms = next_delay;
-
-	return true;
-}
-EXPORT_SYMBOL_GPL(virtio_msg_ffa_fifo_notify_backoff_next);
-
 struct virtio_msg_ffa_memory_share_ctx {
 	struct ffa_device *fdev;
 	struct ffa_mem_ops_args *args;
