@@ -20,6 +20,16 @@ virtio_msg_bus_ffa_common-$(CONFIG_VIRTIO_MSG_FFA_XFER_FIFO) += \
 obj-$(CONFIG_VIRTIO_MSG_FFA_COMMON) += virtio_msg_bus_ffa_common_module.o
 virtio_msg_bus_ffa_common_module-y := $(virtio_msg_bus_ffa_common-y)
 
+virtio_msg_bus_ffa_driver-y := virtio_msg_bus_ffa_driver.o \
+			 virtio_msg_bus_ffa_driver_area.o \
+			 virtio_msg_bus_ffa_driver_topology.o
+virtio_msg_bus_ffa_driver-$(CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT) += \
+			 virtio_msg_bus_ffa_xfer_indirect_driver.o
+virtio_msg_bus_ffa_driver-$(CONFIG_VIRTIO_MSG_FFA_XFER_FIFO) += \
+			 virtio_msg_bus_ffa_xfer_fifo_driver.o
+obj-$(CONFIG_VIRTIO_MSG_FFA_DRIVER_BINDING) += virtio_msg_bus_ffa_driver_module.o
+virtio_msg_bus_ffa_driver_module-y := $(virtio_msg_bus_ffa_driver-y)
+
 obj-$(CONFIG_VIRTIO_PCI) += virtio_pci.o
 virtio_pci-y := virtio_pci_modern.o virtio_pci_common.o
 virtio_pci-$(CONFIG_VIRTIO_PCI_LEGACY) += virtio_pci_legacy.o

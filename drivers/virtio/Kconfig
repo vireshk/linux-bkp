@@ -225,6 +225,26 @@ config VIRTIO_MSG_FFA_COMMON
 	  This enables role-neutral FF-A helpers shared by the virtio
 	  message bus driver-binding and device-binding modules.
 
+config VIRTIO_MSG_FFA_DRIVER_BINDING
+	tristate "Virtio message bus FF-A driver binding"
+	depends on VIRTIO_MSG_TRANSPORT
+	depends on HAS_DMA
+	select VIRTIO_MSG_FFA_COMMON
+	select VIRTIO_MSG_BUS_QUEUE_HELPER
+	select VIRTIO_MSG_BUS_DMA_DRIVER_HELPER
+	select VIRTIO_MSG_FFA_XFER_DIRECT if !VIRTIO_MSG_FFA_XFER_INDIRECT
+	help
+	  This enables the FF-A driver binding for the virtio message
+	  bus.
+
+	  The driver discovers virtio message bus services over FF-A and
+	  exposes the resulting devices through the virtio message transport
+	  core.
+
+	  At least one bootstrap-capable transfer method must be enabled.
+
+	  If unsure, say M.
+
 config VIRTIO_MSG_FFA_XFER_INDIRECT
 	bool "Virtio message bus FF-A indirect transfer support"
 	default y
