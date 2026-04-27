@@ -245,6 +245,27 @@ config VIRTIO_MSG_FFA_DRIVER_BINDING
 
 	  If unsure, say M.
 
+config VIRTIO_MSG_FFA_DEVICE_BINDING
+	tristate "Virtio message bus FF-A device binding"
+	depends on VIRTIO_MSG_BRIDGE
+	select VIRTIO_MSG_FFA_XFER_INDIRECT
+	select VIRTIO_MSG_FFA_COMMON
+	select VIRTIO_MSG_BUS_QUEUE_HELPER
+	select VIRTIO_MSG_BUS_DMA_DEVICE_HELPER
+	help
+	  This enables the FF-A device binding for the virtio message
+	  bus.
+
+	  The device binding exposes a bridge-facing FF-A endpoint that
+	  serves virtio message traffic.
+
+	  Indirect transfer is required as the device-side bootstrap path.
+
+	  If unsure, say M.
+
+menu "Virtio-msg over FF-A transfer methods"
+	depends on VIRTIO_MSG_FFA_DRIVER_BINDING || VIRTIO_MSG_FFA_DEVICE_BINDING
+
 config VIRTIO_MSG_FFA_XFER_DIRECT
 	bool "Virtio message bus FF-A direct transfer support"
 	depends on VIRTIO_MSG_FFA_DRIVER_BINDING
@@ -274,6 +295,8 @@ config VIRTIO_MSG_FFA_XFER_FIFO
 
 	  FIFO is a runtime upgrade path and always requires a non-FIFO
 	  bootstrap method.
+
+endmenu
 
 endif
 
