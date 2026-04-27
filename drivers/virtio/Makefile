@@ -13,6 +13,8 @@ obj-$(CONFIG_VIRTIO_MSG_LOOPBACK) += virtio_msg_loopback.o
 virtio_msg_loopback-y := virtio_msg_loopback_transport.o \
 			 virtio_msg_loopback_bridge.o
 virtio_msg_bus_ffa_common-y := virtio_msg_bus_ffa_common.o
+virtio_msg_bus_ffa_common-$(CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT) += \
+			 virtio_msg_bus_ffa_xfer_indirect.o
 obj-$(CONFIG_VIRTIO_MSG_FFA_COMMON) += virtio_msg_bus_ffa_common_module.o
 virtio_msg_bus_ffa_common_module-y := $(virtio_msg_bus_ffa_common-y)
 

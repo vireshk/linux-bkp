@@ -13,6 +13,7 @@
 
 #include <linux/arm_ffa.h>
 #include <linux/bits.h>
+#include <linux/errno.h>
 #include <linux/kconfig.h>
 #include <linux/types.h>
 
@@ -81,11 +82,6 @@ struct virtio_msg_ffa_xfer_method_ops {
 			      struct virtio_msg *resp, size_t resp_buf_len,
 			      size_t *resp_len);
 };
-
-#if IS_ENABLED(CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT)
-extern const struct virtio_msg_ffa_xfer_method_ops
-	virtio_msg_ffa_indirect_method_ops;
-#endif
 
 static inline unsigned long
 virtio_msg_ffa_xfer_methods(u8 role_mask, u32 bus_features, bool negotiated)
