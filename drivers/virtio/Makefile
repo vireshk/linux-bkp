@@ -23,6 +23,8 @@ virtio_msg_bus_ffa_common_module-y := $(virtio_msg_bus_ffa_common-y)
 virtio_msg_bus_ffa_driver-y := virtio_msg_bus_ffa_driver.o \
 			 virtio_msg_bus_ffa_driver_area.o \
 			 virtio_msg_bus_ffa_driver_topology.o
+virtio_msg_bus_ffa_driver-$(CONFIG_VIRTIO_MSG_FFA_XFER_DIRECT) += \
+			 virtio_msg_bus_ffa_xfer_direct.o
 virtio_msg_bus_ffa_driver-$(CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT) += \
 			 virtio_msg_bus_ffa_xfer_indirect_driver.o
 virtio_msg_bus_ffa_driver-$(CONFIG_VIRTIO_MSG_FFA_XFER_FIFO) += \

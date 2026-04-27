@@ -58,6 +58,12 @@ struct virtio_msg_ffa_xfer_ops {
 	bool async_response;
 };
 
+#ifdef CONFIG_VIRTIO_MSG_FFA_XFER_DIRECT
+bool virtio_msg_ffa_direct_available(struct virtio_msg_ffa_driver *drv);
+extern const struct virtio_msg_ffa_xfer_ops virtio_msg_ffa_direct_xfer_ops;
+extern const struct virtio_msg_ffa_xfer_method_desc
+	virtio_msg_ffa_direct_driver_method_desc;
+#endif
 #ifdef CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT
 bool virtio_msg_ffa_indirect_available(struct virtio_msg_ffa_driver *drv);
 extern const struct virtio_msg_ffa_xfer_ops virtio_msg_ffa_indirect_xfer_ops;

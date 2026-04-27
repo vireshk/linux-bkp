@@ -181,6 +181,13 @@ virtio_msg_ffa_driver_xfer_methods[] = {
 		.capable = virtio_msg_ffa_fifo_available,
 	},
 #endif
+#if IS_ENABLED(CONFIG_VIRTIO_MSG_FFA_XFER_DIRECT)
+	{
+		.desc = &virtio_msg_ffa_direct_driver_method_desc,
+		.ops = &virtio_msg_ffa_direct_xfer_ops,
+		.capable = virtio_msg_ffa_direct_available,
+	},
+#endif
 #if IS_ENABLED(CONFIG_VIRTIO_MSG_FFA_XFER_INDIRECT)
 	{
 		.desc = &virtio_msg_ffa_indirect_driver_method_desc,
