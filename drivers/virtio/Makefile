@@ -5,6 +5,7 @@ obj-$(CONFIG_VIRTIO_PCI_LIB) += virtio_pci_modern_dev.o
 obj-$(CONFIG_VIRTIO_PCI_LIB_LEGACY) += virtio_pci_legacy_dev.o
 obj-$(CONFIG_VIRTIO_MMIO) += virtio_mmio.o
 obj-$(CONFIG_VIRTIO_MSG_TRANSPORT) += virtio_msg_transport.o
+obj-$(CONFIG_VIRTIO_MSG_BUS_QUEUE_HELPER) += virtio_msg_bus_queue_helper.o
 obj-$(CONFIG_VIRTIO_MSG_BUS_DMA_DRIVER_HELPER) += virtio_msg_bus_dma_driver_helper.o
 obj-$(CONFIG_VIRTIO_MSG_BRIDGE) += virtio_msg_bus_bridge_device.o
 obj-$(CONFIG_VIRTIO_MSG_BUS_DMA_DEVICE_HELPER) += virtio_msg_bus_dma_device_helper.o
