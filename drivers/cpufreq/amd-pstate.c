@@ -787,6 +787,7 @@ static unsigned int amd_pstate_fast_switch(struct cpufreq_policy *policy,
 static void amd_pstate_adjust_perf(struct cpufreq_policy *policy,
 				   unsigned long _min_perf,
 				   unsigned long target_perf,
+				   unsigned long _max_perf,
 				   unsigned long capacity)
 {
 	u8 max_perf, min_perf, des_perf, cap_perf;
@@ -816,7 +817,14 @@ static void amd_pstate_adjust_perf(struct cpufreq_policy *policy,
 	if (min_perf < perf.min_limit_perf)
 		min_perf = perf.min_limit_perf;
 
-	max_perf = perf.max_limit_perf;
+	if (_max_perf < capacity)
+		max_perf = DIV_ROUND_UP(cap_perf * _max_perf, capacity);
+	else
+		max_perf = cap_perf;
+
+	if (max_perf > perf.max_limit_perf)
+		max_perf = perf.max_limit_perf;
+
 	if (max_perf < min_perf)
 		max_perf = min_perf;
 
