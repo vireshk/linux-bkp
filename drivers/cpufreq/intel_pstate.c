@@ -303,7 +303,12 @@ static int hwp_mode_bdw __ro_after_init;
 static bool per_cpu_limits __ro_after_init;
 static bool hwp_forced __ro_after_init;
 static bool hwp_boost __read_mostly;
-static bool hwp_is_hybrid;
+static u32 hwp_desired_mask __read_mostly = ~0U;
+
+static inline bool hwp_is_hybrid(void)
+{
+	return !hwp_desired_mask;
+}
 
 static struct cpufreq_driver *intel_pstate_driver __read_mostly;
 
@@ -585,7 +590,7 @@ static void intel_pstate_hybrid_hwp_adjust(struct cpudata *cpu)
 	if (scaling == perf_ctl_scaling)
 		return;
 
-	hwp_is_hybrid = true;
+	hwp_desired_mask = 0;
 
 	cpu->pstate.turbo_freq = rounddown(cpu->pstate.turbo_pstate * scaling,
 					   perf_ctl_scaling);
@@ -1161,7 +1166,7 @@ static void hybrid_init_cpu_capacity_scaling(bool refresh)
 	 * the capacity of SMT threads is not deterministic even approximately,
 	 * do not do that when SMT is in use.
 	 */
-	if (hwp_is_hybrid && !cpu_smt_possible() && arch_enable_hybrid_capacity_scale()) {
+	if (hwp_is_hybrid() && !cpu_smt_possible() && arch_enable_hybrid_capacity_scale()) {
 		hybrid_refresh_cpu_capacity_scaling();
 		/*
 		 * Disabling ITMT causes sched domains to be rebuilt to disable asym
@@ -3154,7 +3159,7 @@ static void intel_cpufreq_hwp_update(struct cpudata *cpu, u32 min, u32 max,
 	value |= HWP_MAX_PERF(max);
 
 	value &= ~HWP_DESIRED_PERF(~0L);
-	value |= HWP_DESIRED_PERF(desired);
+	value |= HWP_DESIRED_PERF(desired & hwp_desired_mask);
 
 	if (value == prev)
 		return;
